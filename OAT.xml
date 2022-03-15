@@ -33,9 +33,17 @@
                 <filteritem type="filepath" name="cmake/.*" desc="Open source cef's origin files directory"/>
                 <filteritem type="filepath" name="tests/.*" desc="Open source cef's origin files directory"/>
             </filefilter>
-            <filefilter name="binaryFileTypePolicyFilter" desc="Filters for binary file policies">
+            <filefilter name="copyrightPolicyFilter" desc="copyright policy filter" >
+                <filteritem type="filepath" name="libcef_dll/.*" desc="Open source cef's origin files directory"/>
+                <filteritem type="filepath" name="tools/.*" desc="Open source cef's origin files directory"/>
+                <filteritem type="filepath" name="patch/.*" desc="Open source cef's origin files directory"/>
+                <filteritem type="filepath" name="cmake/.*" desc="Open source cef's origin files directory"/>
+                <filteritem type="filepath" name="tests/.*" desc="Open source cef's origin files directory"/>
             </filefilter>
-
+            <filefilter name="licenseFileNamePolicyFilter" desc="Filters for LICENSE file policies">
+            </filefilter>	
+            <filefilter name="binaryFileTypePolicyFilter" desc="Filters for binary file policies">
+            </filefilter>			
         </filefilterlist>
         <licensematcherlist>
             <licensematcher name="MIT license" desc="License for libcef/browser/osr/video_consumer_osr.cc.">
