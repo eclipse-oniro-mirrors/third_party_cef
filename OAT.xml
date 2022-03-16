@@ -27,15 +27,21 @@
         </policylist>
         <filefilterlist>
             <filefilter name="defaultFilter" desc="Files not to check">
-                <filteritem type="filepath" name="cef/libcef_dll/.*" desc="Open source cef's origin files directory"/>
-                <filteritem type="filepath" name="cef/tools/.*" desc="Open source cef's origin files directory"/>
-                <filteritem type="filepath" name="cef/patch/.*" desc="Open source cef's origin files directory"/>
-                <filteritem type="filepath" name="cef/cmake/.*" desc="Open source cef's origin files directory"/>
-                <filteritem type="filepath" name="cef/tests/.*" desc="Open source cef's origin files directory"/>
+                <filteritem type="filepath" name="libcef_dll/.*" desc="Open source cef's origin files directory"/>
+                <filteritem type="filepath" name="tools/.*" desc="Open source cef's origin files directory"/>
+                <filteritem type="filepath" name="patch/.*" desc="Open source cef's origin files directory"/>
+                <filteritem type="filepath" name="cmake/.*" desc="Open source cef's origin files directory"/>
+                <filteritem type="filepath" name="tests/.*" desc="Open source cef's origin files directory"/>
             </filefilter>
+            <filefilter name="copyrightPolicyFilter" desc="copyright policy filter" >
+                <filteritem type="filepath" name=".*" desc="Open source cef's origin files directory"/>
+            </filefilter>
+            <filefilter name="licenseFileNamePolicyFilter" desc="Filters for LICENSE file policies">
+                <filteritem type="filepath" name=".*" desc="Open source cef's origin files directory"/>
+            </filefilter>	
             <filefilter name="binaryFileTypePolicyFilter" desc="Filters for binary file policies">
-            </filefilter>
-
+                <filteritem type="filepath" name=".*" desc="Open source cef's origin files directory"/>
+            </filefilter>			
         </filefilterlist>
         <licensematcherlist>
             <licensematcher name="MIT license" desc="License for libcef/browser/osr/video_consumer_osr.cc.">
