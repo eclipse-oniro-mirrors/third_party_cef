@@ -19,7 +19,7 @@
 
 <configuration>
     <oatconfig>
-        <licensefile></licensefile>
+        <licensefile>LICENSE.txt</licensefile>
         <filefilterlist>
             <filefilter name="defaultFilter" desc="Files not to check">
                 <filteritem type="filepath" name=".*" desc="Open source cef's origin files directory"/>
