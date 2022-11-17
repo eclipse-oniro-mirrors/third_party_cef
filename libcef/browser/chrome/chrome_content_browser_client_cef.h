@@ -10,7 +10,6 @@
 
 #include "libcef/browser/request_context_impl.h"
 
-#include "base/macros.h"
 #include "chrome/browser/chrome_content_browser_client.h"
 
 class ChromeBrowserMainExtraPartsCef;
@@ -19,11 +18,16 @@ class ChromeBrowserMainExtraPartsCef;
 class ChromeContentBrowserClientCef : public ChromeContentBrowserClient {
  public:
   ChromeContentBrowserClientCef();
+
+  ChromeContentBrowserClientCef(const ChromeContentBrowserClientCef&) = delete;
+  ChromeContentBrowserClientCef& operator=(
+      const ChromeContentBrowserClientCef&) = delete;
+
   ~ChromeContentBrowserClientCef() override;
 
   // ChromeContentBrowserClient overrides.
   std::unique_ptr<content::BrowserMainParts> CreateBrowserMainParts(
-      const content::MainFunctionParams& parameters) override;
+      content::MainFunctionParams parameters) override;
   void AppendExtraCommandLineSwitches(base::CommandLine* command_line,
                                       int child_process_id) override;
   void RenderProcessWillLaunch(content::RenderProcessHost* host) override;
@@ -48,7 +52,7 @@ class ChromeContentBrowserClientCef : public ChromeContentBrowserClient {
       int render_process_id,
       URLLoaderFactoryType type,
       const url::Origin& request_initiator,
-      base::Optional<int64_t> navigation_id,
+      absl::optional<int64_t> navigation_id,
       ukm::SourceIdObj ukm_source_id,
       mojo::PendingReceiver<network::mojom::URLLoaderFactory>* factory_receiver,
       mojo::PendingRemote<network::mojom::TrustedURLLoaderHeaderClient>*
@@ -58,27 +62,32 @@ class ChromeContentBrowserClientCef : public ChromeContentBrowserClient {
       network::mojom::URLLoaderFactoryOverridePtr* factory_override) override;
   bool HandleExternalProtocol(
       const GURL& url,
-      content::WebContents::OnceGetter web_contents_getter,
+      content::WebContents::Getter web_contents_getter,
       int child_id,
       int frame_tree_node_id,
       content::NavigationUIData* navigation_data,
       bool is_main_frame,
+      network::mojom::WebSandboxFlags sandbox_flags,
       ui::PageTransition page_transition,
       bool has_user_gesture,
-      const base::Optional<url::Origin>& initiating_origin,
+      const absl::optional<url::Origin>& initiating_origin,
+      content::RenderFrameHost* initiator_document,
       mojo::PendingRemote<network::mojom::URLLoaderFactory>* out_factory)
       override;
   bool HandleExternalProtocol(
       content::WebContents::Getter web_contents_getter,
       int frame_tree_node_id,
       content::NavigationUIData* navigation_data,
+      network::mojom::WebSandboxFlags sandbox_flags,
       const network::ResourceRequest& request,
+      const absl::optional<url::Origin>& initiating_origin,
+      content::RenderFrameHost* initiator_document,
       mojo::PendingRemote<network::mojom::URLLoaderFactory>* out_factory)
       override;
   std::vector<std::unique_ptr<content::NavigationThrottle>>
   CreateThrottlesForNavigation(
       content::NavigationHandle* navigation_handle) override;
-  void ConfigureNetworkContextParams(
+  bool ConfigureNetworkContextParams(
       content::BrowserContext* context,
       bool in_memory,
       const base::FilePath& relative_partition_path,
@@ -96,6 +105,13 @@ class ChromeContentBrowserClientCef : public ChromeContentBrowserClient {
       LoginAuthRequiredCallback auth_required_callback) override;
   void BrowserURLHandlerCreated(content::BrowserURLHandler* handler) override;
   bool IsWebUIAllowedToMakeNetworkRequests(const url::Origin& origin) override;
+  void ExposeInterfacesToRenderer(
+      service_manager::BinderRegistry* registry,
+      blink::AssociatedInterfaceRegistry* associated_registry,
+      content::RenderProcessHost* render_process_host) override;
+  void RegisterBrowserInterfaceBindersForFrame(
+      content::RenderFrameHost* render_frame_host,
+      mojo::BinderMapWithContext<content::RenderFrameHost*>* map) override;
 
   CefRefPtr<CefRequestContextImpl> request_context() const;
 
@@ -105,8 +121,6 @@ class ChromeContentBrowserClientCef : public ChromeContentBrowserClient {
 
  private:
   ChromeBrowserMainExtraPartsCef* browser_main_parts_ = nullptr;
-
-  DISALLOW_COPY_AND_ASSIGN(ChromeContentBrowserClientCef);
 };
 
 #endif  // CEF_LIBCEF_BROWSER_CHROME_CHROME_CONTENT_BROWSER_CLIENT_CEF_

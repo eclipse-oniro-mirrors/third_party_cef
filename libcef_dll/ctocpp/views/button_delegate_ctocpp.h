@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=6a72a71a9becd6103d44719ed88b000d576d95eb$
+// $hash=3c5fbabd7adf7390101cc03058bdcac3077c26c8$
 //
 
 #ifndef CEF_LIBCEF_DLL_CTOCPP_VIEWS_BUTTON_DELEGATE_CTOCPP_H_
@@ -52,6 +52,8 @@ class CefButtonDelegateCToCpp
                           bool added,
                           CefRefPtr<CefView> child) override;
   void OnWindowChanged(CefRefPtr<CefView> view, bool added) override;
+  void OnLayoutChanged(CefRefPtr<CefView> view,
+                       const CefRect& new_bounds) override;
   void OnFocus(CefRefPtr<CefView> view) override;
   void OnBlur(CefRefPtr<CefView> view) override;
 };

@@ -17,7 +17,7 @@
 #include "base/callback_forward.h"
 #include "extensions/common/mojom/view_type.mojom-forward.h"
 #include "third_party/blink/public/common/page/drag_operation.h"
-#include "third_party/blink/public/mojom/page/drag.mojom-forward.h"
+#include "third_party/blink/public/mojom/drag/drag.mojom-forward.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/base/dragdrop/mojom/drag_drop_types.mojom-forward.h"
 #include "ui/base/window_open_disposition.h"
@@ -74,6 +74,10 @@ class CefMenuRunner;
 // indicated.
 class CefBrowserPlatformDelegate {
  public:
+  CefBrowserPlatformDelegate(const CefBrowserPlatformDelegate&) = delete;
+  CefBrowserPlatformDelegate& operator=(const CefBrowserPlatformDelegate&) =
+      delete;
+
   // Create a new CefBrowserPlatformDelegate instance. May be called on multiple
   // threads.
   static std::unique_ptr<CefBrowserPlatformDelegate> Create(
@@ -118,7 +122,8 @@ class CefBrowserPlatformDelegate {
   virtual void WebContentsDestroyed(content::WebContents* web_contents);
 
   // See WebContentsDelegate documentation.
-  virtual bool ShouldTransferNavigation(bool is_main_frame_navigation);
+  virtual bool ShouldAllowRendererInitiatedCrossProcessNavigation(
+      bool is_main_frame_navigation);
 
   // Called after the RenderViewHost is created.
   virtual void RenderViewCreated(content::RenderViewHost* render_view_host);
@@ -224,12 +229,12 @@ class CefBrowserPlatformDelegate {
 
   // Send focus event. The browser's WebContents may be NULL when this method is
   // called.
-  virtual void SendFocusEvent(bool setFocus);
+  virtual void SetFocus(bool setFocus);
 
   // Send capture lost event.
   virtual void SendCaptureLostEvent();
 
-#if defined(OS_WIN) || (defined(OS_POSIX) && !defined(OS_MAC))
+#if BUILDFLAG(IS_WIN) || (BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC))
   // The window hosting the browser is about to be moved or resized. Only used
   // on Windows and Linux.
   virtual void NotifyMoveOrResizeStarted();
@@ -348,15 +353,14 @@ class CefBrowserPlatformDelegate {
   virtual void PrintToPDF(const CefString& path,
                           const CefPdfPrintSettings& settings,
                           CefRefPtr<CefPdfPrintCallback> callback);
-  virtual void Find(int identifier,
-                    const CefString& searchText,
+  virtual void Find(const CefString& searchText,
                     bool forward,
                     bool matchCase,
                     bool findNext);
   virtual void StopFinding(bool clearSelection);
 
  protected:
-  // Allow deletion via scoped_ptr only.
+  // Allow deletion via std::unique_ptr only.
   friend std::default_delete<CefBrowserPlatformDelegate>;
 
   CefBrowserPlatformDelegate();
@@ -367,8 +371,6 @@ class CefBrowserPlatformDelegate {
   // Not owned by this object.
   content::WebContents* web_contents_ = nullptr;
   CefBrowserHostBase* browser_ = nullptr;
-
-  DISALLOW_COPY_AND_ASSIGN(CefBrowserPlatformDelegate);
 };
 
 #endif  // CEF_LIBCEF_BROWSER_BROWSER_PLATFORM_DELEGATE_H_

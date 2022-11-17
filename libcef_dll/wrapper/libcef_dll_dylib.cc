@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,12 +9,13 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=9fbe1de9cf7f32c551c535e190d4c82b4947765d$
+// $hash=ac1c94b2e83a4c806bed11fd0f456f8fe7ff1c44$
 //
 
 #include <dlfcn.h>
 #include <stdio.h>
 
+#include "include/base/cef_compiler_specific.h"
 #include "include/capi/cef_app_capi.h"
 #include "include/capi/cef_browser_capi.h"
 #include "include/capi/cef_command_line_capi.h"
@@ -22,6 +23,7 @@
 #include "include/capi/cef_crash_util_capi.h"
 #include "include/capi/cef_drag_data_capi.h"
 #include "include/capi/cef_file_util_capi.h"
+#include "include/capi/cef_i18n_util_capi.h"
 #include "include/capi/cef_image_capi.h"
 #include "include/capi/cef_media_router_capi.h"
 #include "include/capi/cef_menu_model_capi.h"
@@ -114,6 +116,7 @@ typedef int (*cef_zip_directory_ptr)(const cef_string_t*,
                                      const cef_string_t*,
                                      int);
 typedef void (*cef_load_crlsets_file_ptr)(const cef_string_t*);
+typedef int (*cef_is_rtl_ptr)();
 typedef int (*cef_add_cross_origin_whitelist_entry_ptr)(const cef_string_t*,
                                                         const cef_string_t*,
                                                         const cef_string_t*,
@@ -176,9 +179,6 @@ typedef void (*cef_register_web_plugin_crash_ptr)(const cef_string_t*);
 typedef void (*cef_is_web_plugin_unstable_ptr)(
     const cef_string_t*,
     struct _cef_web_plugin_unstable_callback_t*);
-typedef void (*cef_register_widevine_cdm_ptr)(
-    const cef_string_t*,
-    struct _cef_register_cdm_callback_t*);
 typedef void (*cef_execute_java_script_with_user_gesture_for_tests_ptr)(
     struct _cef_frame_t*,
     const cef_string_t*);
@@ -535,6 +535,7 @@ struct libcef_pointers {
   cef_delete_file_ptr cef_delete_file;
   cef_zip_directory_ptr cef_zip_directory;
   cef_load_crlsets_file_ptr cef_load_crlsets_file;
+  cef_is_rtl_ptr cef_is_rtl;
   cef_add_cross_origin_whitelist_entry_ptr cef_add_cross_origin_whitelist_entry;
   cef_remove_cross_origin_whitelist_entry_ptr
       cef_remove_cross_origin_whitelist_entry;
@@ -569,7 +570,6 @@ struct libcef_pointers {
   cef_unregister_internal_web_plugin_ptr cef_unregister_internal_web_plugin;
   cef_register_web_plugin_crash_ptr cef_register_web_plugin_crash;
   cef_is_web_plugin_unstable_ptr cef_is_web_plugin_unstable;
-  cef_register_widevine_cdm_ptr cef_register_widevine_cdm;
   cef_execute_java_script_with_user_gesture_for_tests_ptr
       cef_execute_java_script_with_user_gesture_for_tests;
   cef_browser_host_create_browser_ptr cef_browser_host_create_browser;
@@ -753,6 +753,7 @@ int libcef_init_pointers(const char* path) {
   INIT_ENTRY(cef_delete_file);
   INIT_ENTRY(cef_zip_directory);
   INIT_ENTRY(cef_load_crlsets_file);
+  INIT_ENTRY(cef_is_rtl);
   INIT_ENTRY(cef_add_cross_origin_whitelist_entry);
   INIT_ENTRY(cef_remove_cross_origin_whitelist_entry);
   INIT_ENTRY(cef_clear_cross_origin_whitelist);
@@ -786,7 +787,6 @@ int libcef_init_pointers(const char* path) {
   INIT_ENTRY(cef_unregister_internal_web_plugin);
   INIT_ENTRY(cef_register_web_plugin_crash);
   INIT_ENTRY(cef_is_web_plugin_unstable);
-  INIT_ENTRY(cef_register_widevine_cdm);
   INIT_ENTRY(cef_execute_java_script_with_user_gesture_for_tests);
   INIT_ENTRY(cef_browser_host_create_browser);
   INIT_ENTRY(cef_browser_host_create_browser_sync);
@@ -1061,6 +1061,10 @@ NO_SANITIZE("cfi-icall") void cef_load_crlsets_file(const cef_string_t* path) {
   g_libcef_pointers.cef_load_crlsets_file(path);
 }
 
+NO_SANITIZE("cfi-icall") int cef_is_rtl() {
+  return g_libcef_pointers.cef_is_rtl();
+}
+
 NO_SANITIZE("cfi-icall")
 int cef_add_cross_origin_whitelist_entry(const cef_string_t* source_origin,
                                          const cef_string_t* target_protocol,
@@ -1252,12 +1256,6 @@ void cef_is_web_plugin_unstable(
     const cef_string_t* path,
     struct _cef_web_plugin_unstable_callback_t* callback) {
   g_libcef_pointers.cef_is_web_plugin_unstable(path, callback);
-}
-
-NO_SANITIZE("cfi-icall")
-void cef_register_widevine_cdm(const cef_string_t* path,
-                               struct _cef_register_cdm_callback_t* callback) {
-  g_libcef_pointers.cef_register_widevine_cdm(path, callback);
 }
 
 NO_SANITIZE("cfi-icall")

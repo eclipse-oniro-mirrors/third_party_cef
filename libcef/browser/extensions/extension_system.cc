@@ -8,11 +8,11 @@
 #include <string>
 
 #include "libcef/browser/extension_impl.h"
-#include "libcef/browser/extensions/pdf_extension_util.h"
 #include "libcef/browser/extensions/value_store/cef_value_store_factory.h"
 #include "libcef/browser/thread_util.h"
 #include "libcef/common/extensions/extensions_util.h"
 
+#include "base/bind.h"
 #include "base/command_line.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
@@ -21,6 +21,7 @@
 #include "base/strings/string_tokenizer.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/threading/thread_restrictions.h"
+#include "chrome/browser/pdf/pdf_extension_util.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/chrome_paths.h"
 #include "components/crx_file/id_util.h"
@@ -40,7 +41,6 @@
 #include "extensions/browser/null_app_sorting.h"
 #include "extensions/browser/quota_service.h"
 #include "extensions/browser/renderer_startup_helper.h"
-#include "extensions/browser/runtime_data.h"
 #include "extensions/browser/service_worker_manager.h"
 #include "extensions/browser/state_store.h"
 #include "extensions/browser/unloaded_extension_reason.h"
@@ -179,8 +179,8 @@ void CefExtensionSystem::Init() {
   ready_.Signal();
 
   // Add the internal PDF extension. PDF loading works as follows:
-  // 1. The PDF PPAPI plugin is registered in libcef/common/content_client.cc
-  //    ComputeBuiltInPlugins to handle the kPDFPluginOutOfProcessMimeType.
+  // 1. The PDF plugin is registered in libcef/common/content_client.cc
+  //    ComputeBuiltInPlugins to handle the pdf::kInternalPluginMimeType.
   // 2. The PDF extension is registered by the below call to AddExtension and
   //    associated with the "application/pdf" mime type.
   // 3. Web content running in the owner CefBrowser requests to load a PDF file
@@ -230,24 +230,34 @@ void CefExtensionSystem::Init() {
   //    CefExtensionsBrowserClient::LoadResourceFromResourceBundle
   //    and CefComponentExtensionResourceManager. Access to chrome://resources
   //    is granted via CefExtensionWebContentsObserver::RenderViewCreated.
-  // 15.The PDF extension calls chrome.mimeHandlerPrivate.getStreamInfo
-  //    (chrome/browser/resources/pdf/browser_api.js) to retrieve the PDF
-  //    resource stream. This API is implemented using Mojo as described in
-  //    libcef/common/extensions/api/README.txt.
-  // 16.The PDF extension requests the PDF PPAPI plugin to handle
-  //    kPDFPluginOutOfProcessMimeType. Approval arrives in the guest renderer
+  // 15.The PDF extension requests the PDF plugin to handle
+  //    pdf::kInternalPluginMimeType. Approval arrives in the guest renderer
   //    process via ExtensionFrameHelper::OnExtensionResponse which calls
   //    NativeExtensionBindingsSystem::HandleResponse. This triggers creation of
   //    an HTMLPlugInElement via native V8 bindings to host the PDF plugin.
+  // 16.- With the old PPAPI plugin:
+  //      The PDF extension calls chrome.mimeHandlerPrivate.getStreamInfo
+  //      (chrome/browser/resources/pdf/browser_api.js) to retrieve the PDF
+  //      resource stream. This API is implemented using Mojo as described in
+  //      libcef/common/extensions/api/README.txt.
+  //    - With the new PdfUnseasoned plugin:
+  //      The PDF resource navigation is redirected by PdfNavigationThrottle and
+  //      the stream contents are replaced by PdfURLLoaderRequestInterceptor.
   // 17.HTMLPlugInElement::RequestObject is called in the guest renderer process
-  //    and determines that the PDF PPAPI plugin should be handled internally
+  //    and determines that the PDF plugin should be handled internally
   //    (handled_externally=false). A PluginDocument is created and
   //    AlloyContentRendererClient::OverrideCreatePlugin is called to create a
   //    WebPlugin.
-  // 18.The PDF extension and PDF plugin are now loaded. Print commands, if
+  // 18.- With the old PPAPI plugin:
+  //      The PDF plugin is loaded by ChromeContentRendererClient::CreatePlugin
+  //      calling RenderFrameImpl::CreatePlugin.
+  //    - With the new PdfUnseasoned plugin:
+  //      The PDF plugin is loaded by ChromeContentRendererClient::CreatePlugin
+  //      calling pdf::CreateInternalPlugin.
+  // 19.The PDF extension and PDF plugin are now loaded. Print commands, if
   //    any, are handled in the guest renderer process by ChromePDFPrintClient
   //    and CefPrintRenderFrameHelperDelegate.
-  // 19.When navigating away from the PDF file or closing the owner CefBrowser
+  // 20.When navigating away from the PDF file or closing the owner CefBrowser
   //    the guest WebContents will be destroyed. This triggers a call to
   //    CefMimeHandlerViewGuestDelegate::OnGuestDetached which removes the
   //    routing ID association with the owner CefBrowser.
@@ -386,17 +396,12 @@ void CefExtensionSystem::Shutdown() {
 void CefExtensionSystem::InitForRegularProfile(bool extensions_enabled) {
   DCHECK(!initialized_);
   service_worker_manager_.reset(new ServiceWorkerManager(browser_context_));
-  runtime_data_.reset(new RuntimeData(registry_));
   quota_service_.reset(new QuotaService);
   app_sorting_.reset(new NullAppSorting);
 }
 
 ExtensionService* CefExtensionSystem::extension_service() {
   return nullptr;
-}
-
-RuntimeData* CefExtensionSystem::runtime_data() {
-  return runtime_data_.get();
 }
 
 ManagementPolicy* CefExtensionSystem::management_policy() {
@@ -419,7 +424,12 @@ StateStore* CefExtensionSystem::rules_store() {
   return rules_store_.get();
 }
 
-scoped_refptr<ValueStoreFactory> CefExtensionSystem::store_factory() {
+StateStore* CefExtensionSystem::dynamic_user_scripts_store() {
+  return nullptr;
+}
+
+scoped_refptr<value_store::ValueStoreFactory>
+CefExtensionSystem::store_factory() {
   return store_factory_;
 }
 
@@ -446,10 +456,10 @@ void CefExtensionSystem::RegisterExtensionWithRequestContexts(
   // manifest settings.
   content::GetIOThreadTaskRunner({})->PostTaskAndReply(
       FROM_HERE,
-      base::Bind(&InfoMap::AddExtension, info_map(),
-                 base::RetainedRef(extension), base::Time::Now(),
-                 true,    // incognito_enabled
-                 false),  // notifications_disabled
+      base::BindOnce(&InfoMap::AddExtension, info_map(),
+                     base::RetainedRef(extension), base::Time::Now(),
+                     true,    // incognito_enabled
+                     false),  // notifications_disabled
       std::move(callback));
 }
 
@@ -459,8 +469,8 @@ void CefExtensionSystem::UnregisterExtensionWithRequestContexts(
     const std::string& extension_id,
     const UnloadedExtensionReason reason) {
   content::GetIOThreadTaskRunner({})->PostTask(
-      FROM_HERE,
-      base::Bind(&InfoMap::RemoveExtension, info_map(), extension_id, reason));
+      FROM_HERE, base::BindOnce(&InfoMap::RemoveExtension, info_map(),
+                                extension_id, reason));
 }
 
 const base::OneShotEvent& CefExtensionSystem::ready() const {
@@ -517,18 +527,19 @@ CefExtensionSystem::ComponentExtensionInfo::ComponentExtensionInfo(
 }
 
 void CefExtensionSystem::InitPrefs() {
-  store_factory_ = new CefValueStoreFactory(browser_context_->GetPath());
+  store_factory_ =
+      new value_store::CefValueStoreFactory(browser_context_->GetPath());
 
   Profile* profile = Profile::FromBrowserContext(browser_context_);
 
   // Two state stores. The latter, which contains declarative rules, must be
   // loaded immediately so that the rules are ready before we issue network
   // requests.
-  state_store_.reset(new StateStore(
-      profile, store_factory_, ValueStoreFrontend::BackendType::STATE, true));
+  state_store_ = std::make_unique<StateStore>(
+      profile, store_factory_, StateStore::BackendType::STATE, true);
 
-  rules_store_.reset(new StateStore(
-      profile, store_factory_, ValueStoreFrontend::BackendType::RULES, false));
+  rules_store_ = std::make_unique<StateStore>(
+      profile, store_factory_, StateStore::BackendType::RULES, false);
 }
 
 // Implementation based on ComponentLoader::CreateExtension.
@@ -617,11 +628,6 @@ void CefExtensionSystem::UnloadExtension(const std::string& extension_id,
     registry_->RemoveEnabled(extension->id());
     NotifyExtensionUnloaded(extension.get(), reason);
   }
-
-  content::NotificationService::current()->Notify(
-      extensions::NOTIFICATION_EXTENSION_REMOVED,
-      content::Source<content::BrowserContext>(browser_context_),
-      content::Details<const Extension>(extension.get()));
 }
 
 // Implementation based on ExtensionService::NotifyExtensionLoaded.
@@ -634,9 +640,9 @@ void CefExtensionSystem::NotifyExtensionLoaded(const Extension* extension) {
   // extension.
   RegisterExtensionWithRequestContexts(
       extension,
-      base::Bind(&CefExtensionSystem::OnExtensionRegisteredWithRequestContexts,
-                 weak_ptr_factory_.GetWeakPtr(),
-                 base::WrapRefCounted(extension)));
+      base::BindOnce(
+          &CefExtensionSystem::OnExtensionRegisteredWithRequestContexts,
+          weak_ptr_factory_.GetWeakPtr(), base::WrapRefCounted(extension)));
 
   // Tell renderers about the loaded extension.
   renderer_helper_->OnExtensionLoaded(*extension);

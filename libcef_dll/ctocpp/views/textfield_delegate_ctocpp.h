@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=3a83b906a29ba302874b73804e457680d2b7251e$
+// $hash=63cc6f84be6ad62ccba2b91cc6159275e1cd7dd8$
 //
 
 #ifndef CEF_LIBCEF_DLL_CTOCPP_VIEWS_TEXTFIELD_DELEGATE_CTOCPP_H_
@@ -53,6 +53,8 @@ class CefTextfieldDelegateCToCpp
                           bool added,
                           CefRefPtr<CefView> child) override;
   void OnWindowChanged(CefRefPtr<CefView> view, bool added) override;
+  void OnLayoutChanged(CefRefPtr<CefView> view,
+                       const CefRect& new_bounds) override;
   void OnFocus(CefRefPtr<CefView> view) override;
   void OnBlur(CefRefPtr<CefView> view) override;
 };

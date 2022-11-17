@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "libcef/browser/alloy/alloy_browser_context.h"
+#include "libcef/browser/alloy/browser_platform_delegate_alloy.h"
 #include "libcef/browser/audio_capturer.h"
 #include "libcef/browser/browser_context.h"
 #include "libcef/browser/browser_info.h"
@@ -21,9 +22,9 @@
 #include "libcef/browser/osr/osr_util.h"
 #include "libcef/browser/request_context_impl.h"
 #include "libcef/browser/thread_util.h"
-#include "libcef/common/cef_messages.h"
 #include "libcef/common/cef_switches.h"
 #include "libcef/common/drag_data_impl.h"
+#include "libcef/common/frame_util.h"
 #include "libcef/common/net/url_util.h"
 #include "libcef/common/request_impl.h"
 #include "libcef/common/values_impl.h"
@@ -51,7 +52,7 @@
 #include "extensions/common/constants.h"
 #include "extensions/common/extension.h"
 #include "net/base/net_errors.h"
-#include "third_party/blink/public/mojom/page/widget.mojom-test-utils.h"
+#include "third_party/blink/public/mojom/widget/platform_widget.mojom-test-utils.h"
 #include "ui/events/base_event_utils.h"
 
 using content::KeyboardEventProcessingResult;
@@ -99,6 +100,9 @@ class CefWidgetHostInterceptor
     render_widget_host_->AddObserver(this);
   }
 
+  CefWidgetHostInterceptor(const CefWidgetHostInterceptor&) = delete;
+  CefWidgetHostInterceptor& operator=(const CefWidgetHostInterceptor&) = delete;
+
   blink::mojom::WidgetHost* GetForwardingInterface() override { return impl_; }
 
   // WidgetHostInterceptorForTesting method:
@@ -122,12 +126,9 @@ class CefWidgetHostInterceptor
   AlloyBrowserHostImpl* const browser_;
   content::RenderWidgetHostImpl* const render_widget_host_;
   blink::mojom::WidgetHost* const impl_;
-
-  DISALLOW_COPY_AND_ASSIGN(CefWidgetHostInterceptor);
 };
 
-static constexpr base::TimeDelta kRecentlyAudibleTimeout =
-    base::TimeDelta::FromSeconds(2);
+static constexpr base::TimeDelta kRecentlyAudibleTimeout = base::Seconds(2);
 
 }  // namespace
 
@@ -289,21 +290,10 @@ CefRefPtr<AlloyBrowserHostImpl> AlloyBrowserHostImpl::GetBrowserForContents(
 }
 
 // static
-CefRefPtr<AlloyBrowserHostImpl>
-AlloyBrowserHostImpl::GetBrowserForFrameTreeNode(int frame_tree_node_id) {
+CefRefPtr<AlloyBrowserHostImpl> AlloyBrowserHostImpl::GetBrowserForGlobalId(
+    const content::GlobalRenderFrameHostId& global_id) {
   REQUIRE_ALLOY_RUNTIME();
-  auto browser =
-      CefBrowserHostBase::GetBrowserForFrameTreeNode(frame_tree_node_id);
-  return static_cast<AlloyBrowserHostImpl*>(browser.get());
-}
-
-// static
-CefRefPtr<AlloyBrowserHostImpl> AlloyBrowserHostImpl::GetBrowserForFrameRoute(
-    int render_process_id,
-    int render_routing_id) {
-  REQUIRE_ALLOY_RUNTIME();
-  auto browser = CefBrowserHostBase::GetBrowserForFrameRoute(render_process_id,
-                                                             render_routing_id);
+  auto browser = CefBrowserHostBase::GetBrowserForGlobalId(global_id);
   return static_cast<AlloyBrowserHostImpl*>(browser.get());
 }
 
@@ -376,7 +366,7 @@ void AlloyBrowserHostImpl::SetFocusInternal(bool focus) {
   if (focus)
     OnSetFocus(FOCUS_SOURCE_SYSTEM);
   else if (platform_delegate_)
-    platform_delegate_->SendFocusEvent(false);
+    platform_delegate_->SetFocus(false);
 }
 
 CefWindowHandle AlloyBrowserHostImpl::GetWindowHandle() {
@@ -461,21 +451,19 @@ void AlloyBrowserHostImpl::PrintToPDF(const CefString& path,
   }
 }
 
-void AlloyBrowserHostImpl::Find(int identifier,
-                                const CefString& searchText,
+void AlloyBrowserHostImpl::Find(const CefString& searchText,
                                 bool forward,
                                 bool matchCase,
                                 bool findNext) {
   if (!CEF_CURRENTLY_ON_UIT()) {
     CEF_POST_TASK(CEF_UIT,
-                  base::BindOnce(&AlloyBrowserHostImpl::Find, this, identifier,
-                                 searchText, forward, matchCase, findNext));
+                  base::BindOnce(&AlloyBrowserHostImpl::Find, this, searchText,
+                                 forward, matchCase, findNext));
     return;
   }
 
   if (platform_delegate_) {
-    platform_delegate_->Find(identifier, searchText, forward, matchCase,
-                             findNext);
+    platform_delegate_->Find(searchText, forward, matchCase, findNext);
   }
 }
 
@@ -640,7 +628,7 @@ void AlloyBrowserHostImpl::SendExternalBeginFrame() {
   if (!CEF_CURRENTLY_ON_UIT()) {
     CEF_POST_TASK(
         CEF_UIT,
-        base::Bind(&AlloyBrowserHostImpl::SendExternalBeginFrame, this));
+        base::BindOnce(&AlloyBrowserHostImpl::SendExternalBeginFrame, this));
     return;
   }
 
@@ -655,17 +643,13 @@ void AlloyBrowserHostImpl::SendTouchEvent(const CefTouchEvent& event) {
   }
 
   if (!CEF_CURRENTLY_ON_UIT()) {
-    CEF_POST_TASK(CEF_UIT, base::Bind(&AlloyBrowserHostImpl::SendTouchEvent,
-                                      this, event));
+    CEF_POST_TASK(CEF_UIT, base::BindOnce(&AlloyBrowserHostImpl::SendTouchEvent,
+                                          this, event));
     return;
   }
 
   if (platform_delegate_)
     platform_delegate_->SendTouchEvent(event);
-}
-
-void AlloyBrowserHostImpl::SendFocusEvent(bool setFocus) {
-  SetFocus(setFocus);
 }
 
 void AlloyBrowserHostImpl::SendCaptureLostEvent() {
@@ -681,7 +665,7 @@ void AlloyBrowserHostImpl::SendCaptureLostEvent() {
 }
 
 void AlloyBrowserHostImpl::NotifyMoveOrResizeStarted() {
-#if defined(OS_WIN) || (defined(OS_POSIX) && !defined(OS_MAC))
+#if BUILDFLAG(IS_WIN) || (BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC))
   if (!CEF_CURRENTLY_ON_UIT()) {
     CEF_POST_TASK(
         CEF_UIT,
@@ -780,7 +764,10 @@ void AlloyBrowserHostImpl::DestroyBrowser() {
   menu_manager_.reset(nullptr);
 
   // Delete the audio capturer
-  recently_audible_timer_.Stop();
+  if (recently_audible_timer_) {
+    recently_audible_timer_->Stop();
+    recently_audible_timer_.reset();
+  }
   audio_capturer_.reset(nullptr);
 
   CefBrowserHostBase::DestroyBrowser();
@@ -796,15 +783,18 @@ bool AlloyBrowserHostImpl::MaybeAllowNavigation(
     content::RenderFrameHost* opener,
     bool is_guest_view,
     const content::OpenURLParams& params) {
-  if (is_guest_view && !params.url.SchemeIs(extensions::kExtensionScheme) &&
+  if (is_guest_view && !params.is_pdf &&
+      !params.url.SchemeIs(extensions::kExtensionScheme) &&
       !params.url.SchemeIs(content::kChromeUIScheme)) {
     // The PDF viewer will load the PDF extension in the guest view, and print
-    // preview will load chrome://print in the guest view. All other navigations
-    // are passed to the owner browser.
-    CEF_POST_TASK(
-        CEF_UIT,
-        base::Bind(base::IgnoreResult(&AlloyBrowserHostImpl::OpenURLFromTab),
-                   this, nullptr, params));
+    // preview will load chrome://print in the guest view. The PDF renderer
+    // used with PdfUnseasoned will set |params.is_pdf| when loading the PDF
+    // stream (see PdfNavigationThrottle::WillStartRequest). All other
+    // navigations are passed to the owner browser.
+    CEF_POST_TASK(CEF_UIT,
+                  base::BindOnce(
+                      base::IgnoreResult(&AlloyBrowserHostImpl::OpenURLFromTab),
+                      this, nullptr, params));
 
     return false;
   }
@@ -829,7 +819,7 @@ void AlloyBrowserHostImpl::OnSetFocus(cef_focus_source_t source) {
     return;
 
   if (platform_delegate_)
-    platform_delegate_->SendFocusEvent(true);
+    platform_delegate_->SetFocus(true);
 }
 
 void AlloyBrowserHostImpl::RunFileChooser(
@@ -869,13 +859,21 @@ void AlloyBrowserHostImpl::FindReply(content::WebContents* web_contents,
                                      const gfx::Rect& selection_rect,
                                      int active_match_ordinal,
                                      bool final_update) {
-  if (client_.get()) {
-    CefRefPtr<CefFindHandler> handler = client_->GetFindHandler();
-    if (handler.get()) {
-      CefRect rect(selection_rect.x(), selection_rect.y(),
-                   selection_rect.width(), selection_rect.height());
-      handler->OnFindResult(this, request_id, number_of_matches, rect,
-                            active_match_ordinal, final_update);
+  auto alloy_delegate =
+      static_cast<CefBrowserPlatformDelegateAlloy*>(platform_delegate());
+  if (alloy_delegate->HandleFindReply(request_id, number_of_matches,
+                                      selection_rect, active_match_ordinal,
+                                      final_update)) {
+    if (client_) {
+      if (auto handler = client_->GetFindHandler()) {
+        const auto& details = alloy_delegate->last_search_result();
+        CefRect rect(details.selection_rect().x(), details.selection_rect().y(),
+                     details.selection_rect().width(),
+                     details.selection_rect().height());
+        handler->OnFindResult(
+            this, details.request_id(), details.number_of_matches(), rect,
+            details.active_match_ordinal(), details.final_update());
+      }
     }
   }
 }
@@ -1078,8 +1076,8 @@ void AlloyBrowserHostImpl::DragSourceEndedAt(
 
 void AlloyBrowserHostImpl::SetAudioMuted(bool mute) {
   if (!CEF_CURRENTLY_ON_UIT()) {
-    CEF_POST_TASK(CEF_UIT,
-                  base::Bind(&AlloyBrowserHostImpl::SetAudioMuted, this, mute));
+    CEF_POST_TASK(CEF_UIT, base::BindOnce(&AlloyBrowserHostImpl::SetAudioMuted,
+                                          this, mute));
     return;
   }
   if (!web_contents())
@@ -1115,9 +1113,10 @@ content::WebContents* AlloyBrowserHostImpl::OpenURLFromTab(
   return nullptr;
 }
 
-bool AlloyBrowserHostImpl::ShouldTransferNavigation(
+bool AlloyBrowserHostImpl::ShouldAllowRendererInitiatedCrossProcessNavigation(
     bool is_main_frame_navigation) {
-  return platform_delegate_->ShouldTransferNavigation(is_main_frame_navigation);
+  return platform_delegate_->ShouldAllowRendererInitiatedCrossProcessNavigation(
+      is_main_frame_navigation);
 }
 
 void AlloyBrowserHostImpl::AddNewContents(
@@ -1134,8 +1133,8 @@ void AlloyBrowserHostImpl::AddNewContents(
 }
 
 void AlloyBrowserHostImpl::LoadingStateChanged(content::WebContents* source,
-                                               bool to_different_document) {
-  contents_delegate_->LoadingStateChanged(source, to_different_document);
+                                               bool should_show_loading_ui) {
+  contents_delegate_->LoadingStateChanged(source, should_show_loading_ui);
 }
 
 void AlloyBrowserHostImpl::CloseContents(content::WebContents* source) {
@@ -1221,7 +1220,7 @@ bool AlloyBrowserHostImpl::TakeFocus(content::WebContents* source,
 }
 
 bool AlloyBrowserHostImpl::HandleContextMenu(
-    content::RenderFrameHost* render_frame_host,
+    content::RenderFrameHost& render_frame_host,
     const content::ContextMenuParams& params) {
   return HandleContextMenu(web_contents(), params);
 }
@@ -1279,8 +1278,10 @@ void AlloyBrowserHostImpl::GetCustomWebContentsView(
     content::WebContentsView** view,
     content::RenderViewHostDelegateView** delegate_view) {
   CefBrowserInfoManager::GetInstance()->GetCustomWebContentsView(
-      target_url, opener_render_process_id, opener_render_frame_id, view,
-      delegate_view);
+      target_url,
+      frame_util::MakeGlobalId(opener_render_process_id,
+                               opener_render_frame_id),
+      view, delegate_view);
 }
 
 void AlloyBrowserHostImpl::WebContentsCreated(
@@ -1296,8 +1297,10 @@ void AlloyBrowserHostImpl::WebContentsCreated(
   CefRefPtr<CefDictionaryValue> extra_info;
 
   CefBrowserInfoManager::GetInstance()->WebContentsCreated(
-      target_url, opener_render_process_id, opener_render_frame_id, settings,
-      client, platform_delegate, extra_info);
+      target_url,
+      frame_util::MakeGlobalId(opener_render_process_id,
+                               opener_render_frame_id),
+      settings, client, platform_delegate, extra_info);
 
   scoped_refptr<CefBrowserInfo> info =
       CefBrowserInfoManager::GetInstance()->CreatePopupBrowserInfo(
@@ -1322,9 +1325,9 @@ void AlloyBrowserHostImpl::WebContentsCreated(
                      std::move(platform_delegate), /*cef_extension=*/nullptr);
 }
 
-void AlloyBrowserHostImpl::DidNavigateMainFramePostCommit(
+void AlloyBrowserHostImpl::DidNavigatePrimaryMainFramePostCommit(
     content::WebContents* web_contents) {
-  contents_delegate_->DidNavigateMainFramePostCommit(web_contents);
+  contents_delegate_->DidNavigatePrimaryMainFramePostCommit(web_contents);
 }
 
 content::JavaScriptDialogManager*
@@ -1357,7 +1360,7 @@ bool AlloyBrowserHostImpl::HandleContextMenu(
 
 void AlloyBrowserHostImpl::UpdatePreferredSize(content::WebContents* source,
                                                const gfx::Size& pref_size) {
-#if defined(OS_WIN) || (defined(OS_POSIX) && !defined(OS_MAC))
+#if BUILDFLAG(IS_WIN) || (BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC))
   CEF_REQUIRE_UIT();
   if (platform_delegate_)
     platform_delegate_->SizeTo(pref_size.width(), pref_size.height());
@@ -1469,6 +1472,15 @@ void AlloyBrowserHostImpl::ExitPictureInPicture() {
   PictureInPictureWindowManager::GetInstance()->ExitPictureInPicture();
 }
 
+bool AlloyBrowserHostImpl::IsBackForwardCacheSupported() {
+  // Disabled due to issue #3237.
+  return false;
+}
+
+bool AlloyBrowserHostImpl::IsPrerender2Supported() {
+  return true;
+}
+
 // content::WebContentsObserver methods.
 // -----------------------------------------------------------------------------
 
@@ -1499,14 +1511,19 @@ void AlloyBrowserHostImpl::DidFinishNavigation(
 
 void AlloyBrowserHostImpl::OnAudioStateChanged(bool audible) {
   if (audible) {
-    recently_audible_timer_.Stop();
+    if (recently_audible_timer_)
+      recently_audible_timer_->Stop();
+
     StartAudioCapturer();
   } else if (audio_capturer_) {
+    if (!recently_audible_timer_)
+      recently_audible_timer_ = std::make_unique<base::OneShotTimer>();
+
     // If you have a media playing that has a short quiet moment, web_contents
     // will immediately switch to non-audible state. We don't want to stop
     // audio stream so quickly, let's give the stream some time to resume
     // playing.
-    recently_audible_timer_.Start(
+    recently_audible_timer_->Start(
         FROM_HERE, kRecentlyAudibleTimeout,
         base::BindOnce(&AlloyBrowserHostImpl::OnRecentlyAudibleTimerFired,
                        this));

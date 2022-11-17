@@ -7,6 +7,9 @@
 
 #include "content/public/renderer/render_frame_observer.h"
 
+#include "services/service_manager/public/cpp/binder_registry.h"
+#include "third_party/blink/public/common/associated_interfaces/associated_interface_registry.h"
+
 namespace content {
 class RenderFrame;
 class RenderView;
@@ -17,9 +20,14 @@ class CefFrameImpl;
 class CefRenderFrameObserver : public content::RenderFrameObserver {
  public:
   explicit CefRenderFrameObserver(content::RenderFrame* render_frame);
+
+  CefRenderFrameObserver(const CefRenderFrameObserver&) = delete;
+  CefRenderFrameObserver& operator=(const CefRenderFrameObserver&) = delete;
+
   ~CefRenderFrameObserver() override;
 
   // RenderFrameObserver methods:
+  void WasShown() override;
   void DidCommitProvisionalLoad(ui::PageTransition transition) override;
   void DidFailProvisionalLoad() override;
   void DidFinishLoad() override;
@@ -31,7 +39,17 @@ class CefRenderFrameObserver : public content::RenderFrameObserver {
   void WillReleaseScriptContext(v8::Handle<v8::Context> context,
                                 int world_id) override;
   void OnDestruct() override;
-  bool OnMessageReceived(const IPC::Message& message) override;
+  void OnInterfaceRequestForFrame(
+      const std::string& interface_name,
+      mojo::ScopedMessagePipeHandle* interface_pipe) override;
+  bool OnAssociatedInterfaceRequestForFrame(
+      const std::string& interface_name,
+      mojo::ScopedInterfaceEndpointHandle* handle) override;
+
+  service_manager::BinderRegistry* registry() { return &registry_; }
+  blink::AssociatedInterfaceRegistry* associated_interfaces() {
+    return &associated_interfaces_;
+  }
 
   void AttachFrame(CefFrameImpl* frame);
 
@@ -41,7 +59,12 @@ class CefRenderFrameObserver : public content::RenderFrameObserver {
 
   CefFrameImpl* frame_ = nullptr;
 
-  DISALLOW_COPY_AND_ASSIGN(CefRenderFrameObserver);
+  service_manager::BinderRegistry registry_;
+
+  // For interfaces which must be associated with some IPC::ChannelProxy,
+  // meaning that messages on the interface retain FIFO with respect to legacy
+  // Chrome IPC messages sent or dispatched on the channel.
+  blink::AssociatedInterfaceRegistry associated_interfaces_;
 };
 
 #endif  // LIBCEF_RENDERER_RENDER_FRAME_OBSERVER_H_

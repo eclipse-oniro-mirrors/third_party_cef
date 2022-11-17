@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <list>
 
-#include "include/base/cef_bind.h"
+#include "include/base/cef_callback.h"
 #include "include/cef_callback.h"
 #include "include/cef_scheme.h"
 #include "include/wrapper/cef_closure_task.h"
@@ -67,7 +67,7 @@ class HistoryNavRendererTest : public ClientAppRenderer::Delegate,
   void OnBrowserCreated(CefRefPtr<ClientAppRenderer> app,
                         CefRefPtr<CefBrowser> browser,
                         CefRefPtr<CefDictionaryValue> extra_info) override {
-    run_test_ = extra_info->HasKey(kHistoryNavTestCmdKey);
+    run_test_ = extra_info && extra_info->HasKey(kHistoryNavTestCmdKey);
   }
 
   CefRefPtr<CefLoadHandler> GetLoadHandler(
@@ -388,7 +388,7 @@ class HistoryNavTestHandler : public TestHandler {
       CefRefPtr<CefBrowser> browser,
       CefRefPtr<CefFrame> frame,
       CefRefPtr<CefRequest> request,
-      CefRefPtr<CefRequestCallback> callback) override {
+      CefRefPtr<CefCallback> callback) override {
     if (IsChromeRuntimeEnabled() && request->GetResourceType() == RT_FAVICON) {
       // Ignore favicon requests.
       return RV_CANCEL;
@@ -841,7 +841,7 @@ class RedirectTestHandler : public TestHandler {
       CefRefPtr<CefBrowser> browser,
       CefRefPtr<CefFrame> frame,
       CefRefPtr<CefRequest> request,
-      CefRefPtr<CefRequestCallback> callback) override {
+      CefRefPtr<CefCallback> callback) override {
     if (IsChromeRuntimeEnabled() && request->GetResourceType() == RT_FAVICON) {
       // Ignore favicon requests.
       return RV_CANCEL;
@@ -1147,7 +1147,7 @@ class OrderNavRendererTest : public ClientAppRenderer::Delegate,
   void OnBrowserCreated(CefRefPtr<ClientAppRenderer> app,
                         CefRefPtr<CefBrowser> browser,
                         CefRefPtr<CefDictionaryValue> extra_info) override {
-    run_test_ = extra_info->HasKey(kOrderNavTestCmdKey);
+    run_test_ = extra_info && extra_info->HasKey(kOrderNavTestCmdKey);
     if (!run_test_)
       return;
 
@@ -1453,7 +1453,7 @@ class OrderNavTestHandler : public TestHandler {
       CefRefPtr<CefBrowser> browser,
       CefRefPtr<CefFrame> frame,
       CefRefPtr<CefRequest> request,
-      CefRefPtr<CefRequestCallback> callback) override {
+      CefRefPtr<CefCallback> callback) override {
     if (IsChromeRuntimeEnabled() && request->GetResourceType() == RT_FAVICON) {
       // Ignore favicon requests.
       return RV_CANCEL;
@@ -1619,7 +1619,7 @@ class LoadNavRendererTest : public ClientAppRenderer::Delegate,
   void OnBrowserCreated(CefRefPtr<ClientAppRenderer> app,
                         CefRefPtr<CefBrowser> browser,
                         CefRefPtr<CefDictionaryValue> extra_info) override {
-    run_test_ = extra_info->HasKey(kLoadNavTestCmdKey);
+    run_test_ = extra_info && extra_info->HasKey(kLoadNavTestCmdKey);
     if (!run_test_)
       return;
 
@@ -1792,7 +1792,8 @@ class LoadNavTestHandler : public TestHandler {
         // The next navigation should not occur. Therefore call DestroyTest()
         // after a reasonable timeout.
         CefPostDelayedTask(
-            TID_UI, base::Bind(&LoadNavTestHandler::DestroyTest, this), 500);
+            TID_UI, base::BindOnce(&LoadNavTestHandler::DestroyTest, this),
+            500);
       }
     } else {
       // Done with the test.
@@ -1896,7 +1897,7 @@ class LoadNavTestHandler : public TestHandler {
       CefRefPtr<CefBrowser> browser,
       CefRefPtr<CefFrame> frame,
       CefRefPtr<CefRequest> request,
-      CefRefPtr<CefRequestCallback> callback) override {
+      CefRefPtr<CefCallback> callback) override {
     if (IsChromeRuntimeEnabled() && request->GetResourceType() == RT_FAVICON) {
       // Ignore favicon requests.
       return RV_CANCEL;
@@ -2962,7 +2963,7 @@ class CancelBeforeNavTestHandler : public TestHandler {
     got_get_resource_handler_.yes();
 
     CefPostTask(TID_UI,
-                base::Bind(&CancelBeforeNavTestHandler::CancelLoad, this));
+                base::BindOnce(&CancelBeforeNavTestHandler::CancelLoad, this));
 
     return new UnstartedSchemeHandler();
   }
@@ -3207,7 +3208,8 @@ class CancelAfterNavTestHandler : public TestHandler {
 
     // The required delay is longer when browser-side navigation is enabled.
     CefPostDelayedTask(
-        TID_UI, base::Bind(&CancelAfterNavTestHandler::CancelLoad, this), 1000);
+        TID_UI, base::BindOnce(&CancelAfterNavTestHandler::CancelLoad, this),
+        1000);
 
     return new StalledSchemeHandler();
   }
@@ -3394,7 +3396,7 @@ class ExtraInfoNavRendererTest : public ClientAppRenderer::Delegate {
   void OnBrowserCreated(CefRefPtr<ClientAppRenderer> app,
                         CefRefPtr<CefBrowser> browser,
                         CefRefPtr<CefDictionaryValue> extra_info) override {
-    run_test_ = extra_info->HasKey(kExtraInfoTestCmdKey);
+    run_test_ = extra_info && extra_info->HasKey(kExtraInfoTestCmdKey);
     if (!run_test_)
       return;
 

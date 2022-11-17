@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,15 +9,15 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=baa4e92404f1c0b975c3724e649afb4ef04250f0$
+// $hash=fa45e2603966fc7a6c93c930dd4c03692cf10fd2$
 //
 
 #include "libcef_dll/cpptoc/request_handler_cpptoc.h"
 #include "libcef_dll/cpptoc/resource_request_handler_cpptoc.h"
 #include "libcef_dll/ctocpp/auth_callback_ctocpp.h"
 #include "libcef_dll/ctocpp/browser_ctocpp.h"
+#include "libcef_dll/ctocpp/callback_ctocpp.h"
 #include "libcef_dll/ctocpp/frame_ctocpp.h"
-#include "libcef_dll/ctocpp/request_callback_ctocpp.h"
 #include "libcef_dll/ctocpp/request_ctocpp.h"
 #include "libcef_dll/ctocpp/select_client_certificate_callback_ctocpp.h"
 #include "libcef_dll/ctocpp/sslinfo_ctocpp.h"
@@ -206,7 +206,7 @@ request_handler_on_quota_request(struct _cef_request_handler_t* self,
                                  cef_browser_t* browser,
                                  const cef_string_t* origin_url,
                                  int64 new_size,
-                                 cef_request_callback_t* callback) {
+                                 cef_callback_t* callback) {
   shutdown_checker::AssertNotShutdown();
 
   // AUTO-GENERATED CONTENT - DELETE THIS COMMENT BEFORE MODIFYING
@@ -230,7 +230,7 @@ request_handler_on_quota_request(struct _cef_request_handler_t* self,
   // Execute
   bool _retval = CefRequestHandlerCppToC::Get(self)->OnQuotaRequest(
       CefBrowserCToCpp::Wrap(browser), CefString(origin_url), new_size,
-      CefRequestCallbackCToCpp::Wrap(callback));
+      CefCallbackCToCpp::Wrap(callback));
 
   // Return type: bool
   return _retval;
@@ -242,7 +242,7 @@ request_handler_on_certificate_error(struct _cef_request_handler_t* self,
                                      cef_errorcode_t cert_error,
                                      const cef_string_t* request_url,
                                      struct _cef_sslinfo_t* ssl_info,
-                                     cef_request_callback_t* callback) {
+                                     cef_callback_t* callback) {
   shutdown_checker::AssertNotShutdown();
 
   // AUTO-GENERATED CONTENT - DELETE THIS COMMENT BEFORE MODIFYING
@@ -270,8 +270,7 @@ request_handler_on_certificate_error(struct _cef_request_handler_t* self,
   // Execute
   bool _retval = CefRequestHandlerCppToC::Get(self)->OnCertificateError(
       CefBrowserCToCpp::Wrap(browser), cert_error, CefString(request_url),
-      CefSSLInfoCToCpp::Wrap(ssl_info),
-      CefRequestCallbackCToCpp::Wrap(callback));
+      CefSSLInfoCToCpp::Wrap(ssl_info), CefCallbackCToCpp::Wrap(callback));
 
   // Return type: bool
   return _retval;

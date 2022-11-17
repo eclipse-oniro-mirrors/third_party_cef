@@ -155,7 +155,11 @@ bool CefPrefStore::GetString(const std::string& key, std::string* value) const {
   if (!prefs_.GetValue(key, &stored_value) || !stored_value)
     return false;
 
-  return stored_value->GetAsString(value);
+  if (value && stored_value->is_string()) {
+    *value = stored_value->GetString();
+    return true;
+  }
+  return stored_value->is_string();
 }
 
 bool CefPrefStore::GetInteger(const std::string& key, int* value) const {
@@ -163,7 +167,11 @@ bool CefPrefStore::GetInteger(const std::string& key, int* value) const {
   if (!prefs_.GetValue(key, &stored_value) || !stored_value)
     return false;
 
-  return stored_value->GetAsInteger(value);
+  if (value && stored_value->is_int()) {
+    *value = stored_value->GetInt();
+    return true;
+  }
+  return stored_value->is_int();
 }
 
 bool CefPrefStore::GetBoolean(const std::string& key, bool* value) const {
@@ -171,7 +179,11 @@ bool CefPrefStore::GetBoolean(const std::string& key, bool* value) const {
   if (!prefs_.GetValue(key, &stored_value) || !stored_value)
     return false;
 
-  return stored_value->GetAsBoolean(value);
+  if (value && stored_value->is_bool()) {
+    *value = stored_value->GetBool();
+    return true;
+  }
+  return stored_value->is_bool();
 }
 
 void CefPrefStore::SetBlockAsyncRead(bool block_async_read) {

@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=9e0c499cc30e7e762de3d5969ab6795ec50ffc08$
+// $hash=442b86286b5b3126fd0a0f0849ca661ef7487fb3$
 //
 
 #include "libcef_dll/cpptoc/test/translator_test_scoped_library_cpptoc.h"
@@ -27,7 +27,7 @@ cef_translator_test_scoped_library_create(int value) {
       CefTranslatorTestScopedLibrary::Create(value);
 
   // Return type: ownptr_same
-  return CefTranslatorTestScopedLibraryCppToC::WrapOwn(OWN_PASS(_retval));
+  return CefTranslatorTestScopedLibraryCppToC::WrapOwn(std::move(_retval));
 }
 
 namespace {
@@ -83,17 +83,12 @@ CefCppToCScoped<CefTranslatorTestScopedLibraryCppToC,
     UnwrapDerivedOwn(CefWrapperType type,
                      cef_translator_test_scoped_library_t* s) {
   if (type == WT_TRANSLATOR_TEST_SCOPED_LIBRARY_CHILD) {
-    return OWN_RETURN_AS(
-        CefTranslatorTestScopedLibraryChildCppToC::UnwrapOwn(
-            reinterpret_cast<cef_translator_test_scoped_library_child_t*>(s)),
-        CefTranslatorTestScopedLibrary);
+    return CefTranslatorTestScopedLibraryChildCppToC::UnwrapOwn(
+        reinterpret_cast<cef_translator_test_scoped_library_child_t*>(s));
   }
   if (type == WT_TRANSLATOR_TEST_SCOPED_LIBRARY_CHILD_CHILD) {
-    return OWN_RETURN_AS(
-        CefTranslatorTestScopedLibraryChildChildCppToC::UnwrapOwn(
-            reinterpret_cast<cef_translator_test_scoped_library_child_child_t*>(
-                s)),
-        CefTranslatorTestScopedLibrary);
+    return CefTranslatorTestScopedLibraryChildChildCppToC::UnwrapOwn(
+        reinterpret_cast<cef_translator_test_scoped_library_child_child_t*>(s));
   }
   NOTREACHED() << "Unexpected class type: " << type;
   return CefOwnPtr<CefTranslatorTestScopedLibrary>();

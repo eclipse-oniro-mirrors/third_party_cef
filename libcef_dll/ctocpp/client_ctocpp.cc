@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=19d21957d8b7f66de8c88b9085abb2a08718582d$
+// $hash=f31f5010a3c5c4624b93d994b6fce1e795eeac93$
 //
 
 #include "libcef_dll/ctocpp/client_ctocpp.h"
@@ -24,6 +24,7 @@
 #include "libcef_dll/ctocpp/drag_handler_ctocpp.h"
 #include "libcef_dll/ctocpp/find_handler_ctocpp.h"
 #include "libcef_dll/ctocpp/focus_handler_ctocpp.h"
+#include "libcef_dll/ctocpp/frame_handler_ctocpp.h"
 #include "libcef_dll/ctocpp/jsdialog_handler_ctocpp.h"
 #include "libcef_dll/ctocpp/keyboard_handler_ctocpp.h"
 #include "libcef_dll/ctocpp/life_span_handler_ctocpp.h"
@@ -153,6 +154,21 @@ CefRefPtr<CefFocusHandler> CefClientCToCpp::GetFocusHandler() {
 
   // Return type: refptr_same
   return CefFocusHandlerCToCpp::Wrap(_retval);
+}
+
+NO_SANITIZE("cfi-icall")
+CefRefPtr<CefFrameHandler> CefClientCToCpp::GetFrameHandler() {
+  cef_client_t* _struct = GetStruct();
+  if (CEF_MEMBER_MISSING(_struct, get_frame_handler))
+    return nullptr;
+
+  // AUTO-GENERATED CONTENT - DELETE THIS COMMENT BEFORE MODIFYING
+
+  // Execute
+  cef_frame_handler_t* _retval = _struct->get_frame_handler(_struct);
+
+  // Return type: refptr_same
+  return CefFrameHandlerCToCpp::Wrap(_retval);
 }
 
 NO_SANITIZE("cfi-icall")

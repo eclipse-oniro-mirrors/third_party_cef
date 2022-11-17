@@ -7,6 +7,7 @@
 #include "libcef/browser/osr/render_widget_host_view_osr.h"
 
 #include "media/base/video_frame_metadata.h"
+#include "media/capture/mojom/video_capture_buffer.mojom.h"
 #include "media/capture/mojom/video_capture_types.mojom.h"
 #include "ui/gfx/skbitmap_operations.h"
 
@@ -29,8 +30,7 @@ class ScopedVideoFrameDone {
 
 CefVideoConsumerOSR::CefVideoConsumerOSR(CefRenderWidgetHostViewOSR* view)
     : view_(view), video_capturer_(view->CreateVideoCapturer()) {
-  video_capturer_->SetFormat(media::PIXEL_FORMAT_ARGB,
-                             gfx::ColorSpace::CreateREC709());
+  video_capturer_->SetFormat(media::PIXEL_FORMAT_ARGB);
 
   // Always use the highest resolution within constraints that doesn't exceed
   // the source size.
@@ -45,7 +45,7 @@ CefVideoConsumerOSR::~CefVideoConsumerOSR() = default;
 
 void CefVideoConsumerOSR::SetActive(bool active) {
   if (active) {
-    video_capturer_->Start(this);
+    video_capturer_->Start(this, viz::mojom::BufferFormatPreference::kDefault);
   } else {
     video_capturer_->Stop();
   }
@@ -66,7 +66,7 @@ void CefVideoConsumerOSR::SizeChanged(const gfx::Size& size_in_pixels) {
 }
 
 void CefVideoConsumerOSR::RequestRefreshFrame(
-    const base::Optional<gfx::Rect>& bounds_in_pixels) {
+    const absl::optional<gfx::Rect>& bounds_in_pixels) {
   bounds_in_pixels_ = bounds_in_pixels;
   video_capturer_->RequestRefreshFrame();
 }
@@ -80,17 +80,25 @@ void CefVideoConsumerOSR::RequestRefreshFrame(
 //   the rest of the frame having been letterboxed to adhere to resolution
 //   constraints.
 void CefVideoConsumerOSR::OnFrameCaptured(
-    base::ReadOnlySharedMemoryRegion data,
-    ::media::mojom::VideoFrameInfoPtr info,
+    media::mojom::VideoBufferHandlePtr data,
+    media::mojom::VideoFrameInfoPtr info,
     const gfx::Rect& content_rect,
     mojo::PendingRemote<viz::mojom::FrameSinkVideoConsumerFrameCallbacks>
         callbacks) {
   ScopedVideoFrameDone scoped_done(std::move(callbacks));
 
-  if (!data.IsValid())
-    return;
+  CHECK(data->is_read_only_shmem_region());
+  base::ReadOnlySharedMemoryRegion& shmem_region =
+      data->get_read_only_shmem_region();
 
-  base::ReadOnlySharedMemoryMapping mapping = data.Map();
+  // The |data| parameter is not nullable and mojo type mapping for
+  // `base::ReadOnlySharedMemoryRegion` defines that nullable version of it is
+  // the same type, with null check being equivalent to IsValid() check. Given
+  // the above, we should never be able to receive a read only shmem region that
+  // is not valid - mojo will enforce it for us.
+  DCHECK(shmem_region.IsValid());
+
+  base::ReadOnlySharedMemoryMapping mapping = shmem_region.Map();
   if (!mapping.IsValid()) {
     DLOG(ERROR) << "Shared memory mapping failed.";
     return;
@@ -112,7 +120,7 @@ void CefVideoConsumerOSR::OnFrameCaptured(
     // Use the bounds passed to RequestRefreshFrame().
     damage_rect = gfx::Rect(info->coded_size);
     damage_rect.Intersect(*bounds_in_pixels_);
-    bounds_in_pixels_ = base::nullopt;
+    bounds_in_pixels_ = absl::nullopt;
   } else {
     // Retrieve the rectangular region of the frame that has changed since the
     // frame with the directly preceding CAPTURE_COUNTER. If that frame was not

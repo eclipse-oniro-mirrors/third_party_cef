@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=8e8daae6a8ed718582045ea42e16906813b77337$
+// $hash=8f3129779912a325240795e05610d6190997e028$
 //
 
 #include "libcef_dll/cpptoc/views/browser_view_delegate_cpptoc.h"
@@ -344,6 +344,35 @@ browser_view_delegate_on_window_changed(struct _cef_view_delegate_t* self,
 }
 
 void CEF_CALLBACK
+browser_view_delegate_on_layout_changed(struct _cef_view_delegate_t* self,
+                                        cef_view_t* view,
+                                        const cef_rect_t* new_bounds) {
+  shutdown_checker::AssertNotShutdown();
+
+  // AUTO-GENERATED CONTENT - DELETE THIS COMMENT BEFORE MODIFYING
+
+  DCHECK(self);
+  if (!self)
+    return;
+  // Verify param: view; type: refptr_diff
+  DCHECK(view);
+  if (!view)
+    return;
+  // Verify param: new_bounds; type: simple_byref_const
+  DCHECK(new_bounds);
+  if (!new_bounds)
+    return;
+
+  // Translate param: new_bounds; type: simple_byref_const
+  CefRect new_boundsVal = new_bounds ? *new_bounds : CefRect();
+
+  // Execute
+  CefBrowserViewDelegateCppToC::Get(
+      reinterpret_cast<cef_browser_view_delegate_t*>(self))
+      ->OnLayoutChanged(CefViewCToCpp::Wrap(view), new_boundsVal);
+}
+
+void CEF_CALLBACK
 browser_view_delegate_on_focus(struct _cef_view_delegate_t* self,
                                cef_view_t* view) {
   shutdown_checker::AssertNotShutdown();
@@ -410,6 +439,7 @@ CefBrowserViewDelegateCppToC::CefBrowserViewDelegateCppToC() {
   GetStruct()->base.on_child_view_changed =
       browser_view_delegate_on_child_view_changed;
   GetStruct()->base.on_window_changed = browser_view_delegate_on_window_changed;
+  GetStruct()->base.on_layout_changed = browser_view_delegate_on_layout_changed;
   GetStruct()->base.on_focus = browser_view_delegate_on_focus;
   GetStruct()->base.on_blur = browser_view_delegate_on_blur;
 }

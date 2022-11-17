@@ -69,9 +69,6 @@ void SetChromePrefs(Profile* profile, blink::web_pref::WebPreferences& web) {
   FontFamilyCache::FillFontFamilyMap(profile,
                                      prefs::kWebKitFantasyFontFamilyMap,
                                      &web.fantasy_font_family_map);
-  FontFamilyCache::FillFontFamilyMap(profile,
-                                     prefs::kWebKitPictographFontFamilyMap,
-                                     &web.pictograph_font_family_map);
 
   web.default_font_size = prefs->GetInteger(prefs::kWebKitDefaultFontSize);
   web.default_fixed_font_size =
@@ -143,7 +140,8 @@ void SetChromePrefs(Profile* profile, blink::web_pref::WebPreferences& web) {
 
 // Extension preferences.
 // Should match ChromeContentBrowserClientExtensionsPart::OverrideWebkitPrefs.
-void SetExtensionPrefs(content::RenderViewHost* rvh,
+void SetExtensionPrefs(content::WebContents* web_contents,
+                       content::RenderViewHost* rvh,
                        blink::web_pref::WebPreferences& web) {
   if (!extensions::ExtensionsEnabled())
     return;
@@ -161,7 +159,8 @@ void SetExtensionPrefs(content::RenderViewHost* rvh,
   // correct scheme. Without this check, chrome-guest:// schemes used by webview
   // tags as well as hosts that happen to match the id of an installed extension
   // would get the wrong preferences.
-  const GURL& site_url = rvh->GetMainFrame()->GetSiteInstance()->GetSiteURL();
+  const GURL& site_url =
+      web_contents->GetMainFrame()->GetSiteInstance()->GetSiteURL();
   if (!site_url.SchemeIs(extensions::kExtensionScheme))
     return;
 
@@ -319,10 +318,6 @@ void SetCefPrefs(const CefBrowserSettings& cef,
             web.javascript_can_access_clipboard);
   SET_STATE(cef.javascript_dom_paste, web.dom_paste_enabled);
   SET_STATE(cef.plugins, web.plugins_enabled);
-  SET_STATE(cef.universal_access_from_file_urls,
-            web.allow_universal_access_from_file_urls);
-  SET_STATE(cef.file_access_from_file_urls,
-            web.allow_file_access_from_file_urls);
   SET_STATE(cef.image_loading, web.loads_images_automatically);
   SET_STATE(cef.image_shrink_standalone_to_fit,
             web.shrinks_standalone_images_to_fit);
@@ -330,7 +325,6 @@ void SetCefPrefs(const CefBrowserSettings& cef,
   SET_STATE(cef.tab_to_links, web.tabs_to_links);
   SET_STATE(cef.local_storage, web.local_storage_enabled);
   SET_STATE(cef.databases, web.databases_enabled);
-  SET_STATE(cef.application_cache, web.application_cache_enabled);
 
   // Never explicitly enable GPU-related functions in this method because the
   // GPU blacklist is not being checked here.
@@ -350,14 +344,12 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
       prefs::kEnableDoNotTrack, false,
       user_prefs::PrefRegistrySyncable::SYNCABLE_PREF);
   registry->RegisterBooleanPref(prefs::kCaretBrowsingEnabled, false);
-  registry->RegisterBooleanPref(prefs::kCloudPrintDeprecationWarningsSuppressed,
-                                false);
 
   registry->RegisterStringPref(prefs::kWebRTCIPHandlingPolicy,
                                blink::kWebRTCIPHandlingDefault);
   registry->RegisterStringPref(prefs::kWebRTCUDPPortRange, std::string());
 
-#if !defined(OS_MAC)
+#if !BUILDFLAG(IS_MAC)
   registry->RegisterBooleanPref(prefs::kFullscreenAllowed, true);
 #endif
 
@@ -371,7 +363,8 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
 }
 
 void PopulateWebPreferences(content::RenderViewHost* rvh,
-                            blink::web_pref::WebPreferences& web) {
+                            blink::web_pref::WebPreferences& web,
+                            SkColor& base_background_color) {
   REQUIRE_ALLOY_RUNTIME();
   CefRefPtr<AlloyBrowserHostImpl> browser = static_cast<AlloyBrowserHostImpl*>(
       extensions::GetOwnerBrowserForHost(rvh, nullptr).get());
@@ -406,13 +399,18 @@ void PopulateWebPreferences(content::RenderViewHost* rvh,
     case ui::NativeTheme::PreferredContrast::kLess:
       web.preferred_contrast = blink::mojom::PreferredContrast::kLess;
       break;
+    case ui::NativeTheme::PreferredContrast::kCustom:
+      web.preferred_contrast = blink::mojom::PreferredContrast::kCustom;
+      break;
   }
 
+  auto web_contents = content::WebContents::FromRenderViewHost(rvh);
   UpdatePreferredColorScheme(
-      &web, rvh->GetMainFrame()->GetSiteInstance()->GetSiteURL(), native_theme);
+      &web, web_contents->GetMainFrame()->GetSiteInstance()->GetSiteURL(),
+      native_theme);
 
   // Set preferences based on the extension.
-  SetExtensionPrefs(rvh, web);
+  SetExtensionPrefs(web_contents, rvh, web);
 
   if (browser) {
     // Set preferences based on CefBrowserSettings.
@@ -421,11 +419,11 @@ void PopulateWebPreferences(content::RenderViewHost* rvh,
     web.picture_in_picture_enabled = browser->IsPictureInPictureSupported();
 
     // Set the background color for the WebView.
-    web.base_background_color = browser->GetBackgroundColor();
+    base_background_color = browser->GetBackgroundColor();
   } else {
     // We don't know for sure that the browser will be windowless but assume
     // that the global windowless state is likely to be accurate.
-    web.base_background_color =
+    base_background_color =
         CefContext::Get()->GetBackgroundColor(nullptr, STATE_DEFAULT);
   }
 }

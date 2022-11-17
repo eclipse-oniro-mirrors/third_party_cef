@@ -5,7 +5,7 @@
 #include "base/compiler_specific.h"
 
 // Enable deprecation warnings on Windows. See http://crbug.com/585142.
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #if defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic error "-Wdeprecated-declarations"
@@ -48,6 +48,12 @@ void CefRenderFrameObserver::DidCommitProvisionalLoad(
     browserPtr->OnLoadingStateChange(true);
   }
   OnLoadStart();
+}
+
+void CefRenderFrameObserver::WasShown() {
+  if (frame_) {
+    frame_->OnWasShown();
+  }
 }
 
 void CefRenderFrameObserver::DidFailProvisionalLoad() {
@@ -126,20 +132,23 @@ void CefRenderFrameObserver::DidCreateScriptContext(
   CefRefPtr<CefApp> application = CefAppManager::Get()->GetApplication();
   if (application)
     handler = application->GetRenderProcessHandler();
-  if (!handler)
-    return;
 
   CefRefPtr<CefFrameImpl> framePtr = browserPtr->GetWebFrameImpl(frame);
 
-  v8::Isolate* isolate = blink::MainThreadIsolate();
-  v8::HandleScope handle_scope(isolate);
-  v8::Context::Scope scope(context);
-  v8::MicrotasksScope microtasks_scope(isolate,
-                                       v8::MicrotasksScope::kRunMicrotasks);
+  if (handler) {
+    v8::Isolate* isolate = blink::MainThreadIsolate();
+    v8::HandleScope handle_scope(isolate);
+    v8::Context::Scope scope(context);
+    v8::MicrotasksScope microtasks_scope(isolate,
+                                         v8::MicrotasksScope::kRunMicrotasks);
 
-  CefRefPtr<CefV8Context> contextPtr(new CefV8ContextImpl(isolate, context));
+    CefRefPtr<CefV8Context> contextPtr(new CefV8ContextImpl(isolate, context));
 
-  handler->OnContextCreated(browserPtr.get(), framePtr.get(), contextPtr);
+    handler->OnContextCreated(browserPtr.get(), framePtr.get(), contextPtr);
+  }
+
+  // Do this last, in case the client callback modified the window object.
+  framePtr->OnContextCreated();
 }
 
 void CefRenderFrameObserver::WillReleaseScriptContext(
@@ -180,11 +189,16 @@ void CefRenderFrameObserver::OnDestruct() {
   delete this;
 }
 
-bool CefRenderFrameObserver::OnMessageReceived(const IPC::Message& message) {
-  if (frame_) {
-    return frame_->OnMessageReceived(message);
-  }
-  return false;
+void CefRenderFrameObserver::OnInterfaceRequestForFrame(
+    const std::string& interface_name,
+    mojo::ScopedMessagePipeHandle* interface_pipe) {
+  registry_.TryBindInterface(interface_name, interface_pipe);
+}
+
+bool CefRenderFrameObserver::OnAssociatedInterfaceRequestForFrame(
+    const std::string& interface_name,
+    mojo::ScopedInterfaceEndpointHandle* handle) {
+  return associated_interfaces_.TryBindInterface(interface_name, handle);
 }
 
 void CefRenderFrameObserver::AttachFrame(CefFrameImpl* frame) {
@@ -233,7 +247,7 @@ void CefRenderFrameObserver::OnLoadError() {
 }
 
 // Enable deprecation warnings on Windows. See http://crbug.com/585142.
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #if defined(__clang__)
 #pragma GCC diagnostic pop
 #else

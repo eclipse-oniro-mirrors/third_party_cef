@@ -35,6 +35,9 @@ using OnInputStreamOpenedCallback =
 class OpenInputStreamWrapper
     : public base::RefCountedThreadSafe<OpenInputStreamWrapper> {
  public:
+  OpenInputStreamWrapper(const OpenInputStreamWrapper&) = delete;
+  OpenInputStreamWrapper& operator=(const OpenInputStreamWrapper&) = delete;
+
   static base::OnceClosure Open(
       std::unique_ptr<StreamReaderURLLoader::Delegate> delegate,
       scoped_refptr<base::SequencedTaskRunner> work_thread_task_runner,
@@ -61,7 +64,7 @@ class OpenInputStreamWrapper
         work_thread_task_runner_(work_thread_task_runner),
         job_thread_task_runner_(job_thread_task_runner),
         callback_(std::move(callback)) {}
-  virtual ~OpenInputStreamWrapper() {}
+  virtual ~OpenInputStreamWrapper() = default;
 
   void Start(int32_t request_id, const network::ResourceRequest& request) {
     work_thread_task_runner_->PostTask(
@@ -142,8 +145,6 @@ class OpenInputStreamWrapper
 
   // Only accessed on |work_thread_task_runner_|.
   bool is_canceled_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(OpenInputStreamWrapper);
 };
 
 }  // namespace
@@ -160,6 +161,9 @@ class InputStreamReader : public base::RefCountedThreadSafe<InputStreamReader> {
   InputStreamReader(
       std::unique_ptr<InputStream> stream,
       scoped_refptr<base::SequencedTaskRunner> work_thread_task_runner);
+
+  InputStreamReader(const InputStreamReader&) = delete;
+  InputStreamReader& operator=(const InputStreamReader&) = delete;
 
   // Skip |skip_bytes| number of bytes from |stream_|. |callback| will be
   // executed asynchronously on the IO thread. A negative value passed to
@@ -229,8 +233,6 @@ class InputStreamReader : public base::RefCountedThreadSafe<InputStreamReader> {
   int pending_callback_id_ = -1;
 
   int next_callback_id_ = 0;
-
-  DISALLOW_COPY_AND_ASSIGN(InputStreamReader);
 };
 
 InputStreamReader::InputStreamReader(
@@ -508,13 +510,13 @@ void StreamReaderURLLoader::Start() {
         base::BindOnce(&StreamReaderURLLoader::ContinueWithRequestHeaders,
                        weak_factory_.GetWeakPtr()));
   } else {
-    ContinueWithRequestHeaders(net::OK, base::nullopt);
+    ContinueWithRequestHeaders(net::OK, absl::nullopt);
   }
 }
 
 void StreamReaderURLLoader::ContinueWithRequestHeaders(
     int32_t result,
-    const base::Optional<net::HttpRequestHeaders>& headers) {
+    const absl::optional<net::HttpRequestHeaders>& headers) {
   if (result != net::OK) {
     RequestComplete(result);
     return;
@@ -540,7 +542,7 @@ void StreamReaderURLLoader::FollowRedirect(
     const std::vector<std::string>& removed_headers,
     const net::HttpRequestHeaders& modified_headers,
     const net::HttpRequestHeaders& modified_cors_exempt_headers,
-    const base::Optional<GURL>& new_url) {
+    const absl::optional<GURL>& new_url) {
   NOTREACHED();
 }
 
@@ -651,15 +653,15 @@ void StreamReaderURLLoader::HeadersComplete(int orig_status_code,
                        std::move(pending_response)));
   } else {
     ContinueWithResponseHeaders(std::move(pending_response), net::OK,
-                                base::nullopt, base::nullopt);
+                                absl::nullopt, absl::nullopt);
   }
 }
 
 void StreamReaderURLLoader::ContinueWithResponseHeaders(
     network::mojom::URLResponseHeadPtr pending_response,
     int32_t result,
-    const base::Optional<std::string>& headers,
-    const base::Optional<GURL>& redirect_url) {
+    const absl::optional<std::string>& headers,
+    const absl::optional<GURL>& redirect_url) {
   if (result != net::OK) {
     RequestComplete(result);
     return;
@@ -695,7 +697,8 @@ void StreamReaderURLLoader::ContinueWithResponseHeaders(
     // |this| will be deleted.
     CleanUp();
   } else {
-    client_->OnReceiveResponse(std::move(pending_response));
+    client_->OnReceiveResponse(std::move(pending_response),
+                               mojo::ScopedDataPipeConsumerHandle());
   }
 }
 

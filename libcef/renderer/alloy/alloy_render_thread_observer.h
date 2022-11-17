@@ -8,8 +8,6 @@
 
 #include <memory>
 
-#include "libcef/renderer/render_thread_observer.h"
-
 #include "base/compiler_specific.h"
 #include "chrome/common/renderer_configuration.mojom.h"
 #include "components/content_settings/core/common/content_settings.h"
@@ -17,10 +15,15 @@
 #include "mojo/public/cpp/bindings/associated_receiver_set.h"
 
 // This class sends and receives control messages in the renderer process.
-class AlloyRenderThreadObserver : public CefRenderThreadObserver,
+class AlloyRenderThreadObserver : public content::RenderThreadObserver,
                                   public chrome::mojom::RendererConfiguration {
  public:
   AlloyRenderThreadObserver();
+
+  AlloyRenderThreadObserver(const AlloyRenderThreadObserver&) = delete;
+  AlloyRenderThreadObserver& operator=(const AlloyRenderThreadObserver&) =
+      delete;
+
   ~AlloyRenderThreadObserver() override;
 
   static bool is_incognito_process() { return is_incognito_process_; }
@@ -39,8 +42,9 @@ class AlloyRenderThreadObserver : public CefRenderThreadObserver,
   // chrome::mojom::RendererConfiguration:
   void SetInitialConfiguration(
       bool is_incognito_process,
-      mojo::PendingReceiver<chrome::mojom::ChromeOSListener> chromeos_listener)
-      override;
+      mojo::PendingReceiver<chrome::mojom::ChromeOSListener> chromeos_listener,
+      mojo::PendingRemote<content_settings::mojom::ContentSettingsManager>
+          content_settings_manager) override;
   void SetConfiguration(chrome::mojom::DynamicParamsPtr params) override;
   void SetContentSettingRules(
       const RendererContentSettingRules& rules) override;
@@ -53,8 +57,6 @@ class AlloyRenderThreadObserver : public CefRenderThreadObserver,
 
   mojo::AssociatedReceiverSet<chrome::mojom::RendererConfiguration>
       renderer_configuration_receivers_;
-
-  DISALLOW_COPY_AND_ASSIGN(AlloyRenderThreadObserver);
 };
 
 #endif  // CEF_LIBCEF_RENDERER_ALLOY_ALLOY_RENDER_THREAD_OBSERVER_H_

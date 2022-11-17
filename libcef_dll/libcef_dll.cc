@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,12 +9,13 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=b2f22315d4021be203ececa54d5bb8c651f60dfc$
+// $hash=fa04fba704658b02675380bd63d91005c6757d4e$
 //
 
 #include "include/capi/cef_app_capi.h"
 #include "include/capi/cef_crash_util_capi.h"
 #include "include/capi/cef_file_util_capi.h"
+#include "include/capi/cef_i18n_util_capi.h"
 #include "include/capi/cef_origin_whitelist_capi.h"
 #include "include/capi/cef_parser_capi.h"
 #include "include/capi/cef_path_util_capi.h"
@@ -29,6 +30,7 @@
 #include "include/cef_app.h"
 #include "include/cef_crash_util.h"
 #include "include/cef_file_util.h"
+#include "include/cef_i18n_util.h"
 #include "include/cef_origin_whitelist.h"
 #include "include/cef_parser.h"
 #include "include/cef_path_util.h"
@@ -47,7 +49,6 @@
 #include "libcef_dll/ctocpp/app_ctocpp.h"
 #include "libcef_dll/ctocpp/completion_callback_ctocpp.h"
 #include "libcef_dll/ctocpp/end_tracing_callback_ctocpp.h"
-#include "libcef_dll/ctocpp/register_cdm_callback_ctocpp.h"
 #include "libcef_dll/ctocpp/scheme_handler_factory_ctocpp.h"
 #include "libcef_dll/ctocpp/task_ctocpp.h"
 #include "libcef_dll/ctocpp/v8handler_ctocpp.h"
@@ -328,6 +329,16 @@ CEF_EXPORT void cef_load_crlsets_file(const cef_string_t* path) {
 
   // Execute
   CefLoadCRLSetsFile(CefString(path));
+}
+
+CEF_EXPORT int cef_is_rtl() {
+  // AUTO-GENERATED CONTENT - DELETE THIS COMMENT BEFORE MODIFYING
+
+  // Execute
+  bool _retval = CefIsRTL();
+
+  // Return type: bool
+  return _retval;
 }
 
 CEF_EXPORT int cef_add_cross_origin_whitelist_entry(
@@ -890,22 +901,6 @@ CEF_EXPORT void cef_is_web_plugin_unstable(
   // Execute
   CefIsWebPluginUnstable(CefString(path),
                          CefWebPluginUnstableCallbackCToCpp::Wrap(callback));
-}
-
-CEF_EXPORT void cef_register_widevine_cdm(
-    const cef_string_t* path,
-    struct _cef_register_cdm_callback_t* callback) {
-  // AUTO-GENERATED CONTENT - DELETE THIS COMMENT BEFORE MODIFYING
-
-  // Verify param: path; type: string_byref_const
-  DCHECK(path);
-  if (!path)
-    return;
-  // Unverified params: callback
-
-  // Execute
-  CefRegisterWidevineCdm(CefString(path),
-                         CefRegisterCdmCallbackCToCpp::Wrap(callback));
 }
 
 CEF_EXPORT void cef_execute_java_script_with_user_gesture_for_tests(

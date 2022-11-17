@@ -35,6 +35,10 @@ class StreamCreatedCallbackAdapter final
     DCHECK(callback_);
   }
 
+  StreamCreatedCallbackAdapter(const StreamCreatedCallbackAdapter&) = delete;
+  StreamCreatedCallbackAdapter& operator=(const StreamCreatedCallbackAdapter&) =
+      delete;
+
   ~StreamCreatedCallbackAdapter() override {}
 
   // blink::mojom::RendererAudioInputStreamFactoryClient implementation.
@@ -44,7 +48,7 @@ class StreamCreatedCallbackAdapter final
           client_receiver,
       media::mojom::ReadOnlyAudioDataPipePtr data_pipe,
       bool initially_muted,
-      const base::Optional<base::UnguessableToken>& stream_id) override {
+      const absl::optional<base::UnguessableToken>& stream_id) override {
     DCHECK(!initially_muted);  // Loopback streams shouldn't be started muted.
     callback_.Run(std::move(stream), std::move(client_receiver),
                   std::move(data_pipe));
@@ -52,8 +56,6 @@ class StreamCreatedCallbackAdapter final
 
  private:
   const CefAudioLoopbackStreamCreator::StreamCreatedCallback callback_;
-
-  DISALLOW_COPY_AND_ASSIGN(StreamCreatedCallbackAdapter);
 };
 
 void CreateLoopbackStreamHelper(

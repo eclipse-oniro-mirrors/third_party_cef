@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=990d05c70f40b68b043cac0ad1e13f7004864bbe$
+// $hash=6f127ca09c0419845e4fc6aec71b0bf9373ff290$
 //
 
 #ifndef CEF_LIBCEF_DLL_CTOCPP_NAVIGATION_ENTRY_CTOCPP_H_
@@ -35,16 +35,16 @@ class CefNavigationEntryCToCpp
   virtual ~CefNavigationEntryCToCpp();
 
   // CefNavigationEntry methods.
-  bool IsValid() OVERRIDE;
-  CefString GetURL() OVERRIDE;
-  CefString GetDisplayURL() OVERRIDE;
-  CefString GetOriginalURL() OVERRIDE;
-  CefString GetTitle() OVERRIDE;
-  TransitionType GetTransitionType() OVERRIDE;
-  bool HasPostData() OVERRIDE;
-  CefTime GetCompletionTime() OVERRIDE;
-  int GetHttpStatusCode() OVERRIDE;
-  CefRefPtr<CefSSLStatus> GetSSLStatus() OVERRIDE;
+  bool IsValid() override;
+  CefString GetURL() override;
+  CefString GetDisplayURL() override;
+  CefString GetOriginalURL() override;
+  CefString GetTitle() override;
+  TransitionType GetTransitionType() override;
+  bool HasPostData() override;
+  CefTime GetCompletionTime() override;
+  int GetHttpStatusCode() override;
+  CefRefPtr<CefSSLStatus> GetSSLStatus() override;
 };
 
 #endif  // CEF_LIBCEF_DLL_CTOCPP_NAVIGATION_ENTRY_CTOCPP_H_

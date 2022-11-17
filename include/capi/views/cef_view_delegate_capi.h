@@ -1,4 +1,4 @@
-// Copyright (c) 2021 Marshall A. Greenblatt. All rights reserved.
+// Copyright (c) 2022 Marshall A. Greenblatt. All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -33,7 +33,7 @@
 // by hand. See the translator.README.txt file in the tools directory for
 // more information.
 //
-// $hash=a060cb3c53317d758e7f6b4a275288cd08f086e7$
+// $hash=6a8166eca76513b59a4f6355f4f765dc1d77e4ee$
 //
 
 #ifndef CEF_INCLUDE_CAPI_VIEWS_CEF_VIEW_DELEGATE_CAPI_H_
@@ -120,6 +120,13 @@ typedef struct _cef_view_delegate_t {
   void(CEF_CALLBACK* on_window_changed)(struct _cef_view_delegate_t* self,
                                         struct _cef_view_t* view,
                                         int added);
+
+  ///
+  // Called when the layout of |view| has changed.
+  ///
+  void(CEF_CALLBACK* on_layout_changed)(struct _cef_view_delegate_t* self,
+                                        struct _cef_view_t* view,
+                                        const cef_rect_t* new_bounds);
 
   ///
   // Called when |view| gains focus.

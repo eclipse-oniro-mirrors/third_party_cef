@@ -10,7 +10,7 @@
 #include "base/compiler_specific.h"
 
 // Enable deprecation warnings on Windows. See http://crbug.com/585142.
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #if defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic error "-Wdeprecated-declarations"
@@ -24,23 +24,21 @@
 #include "libcef/browser/context.h"
 #include "libcef/common/alloy/alloy_content_client.h"
 #include "libcef/common/app_manager.h"
-#include "libcef/common/cef_messages.h"
 #include "libcef/common/cef_switches.h"
 #include "libcef/common/extensions/extensions_client.h"
 #include "libcef/common/extensions/extensions_util.h"
 #include "libcef/common/request_impl.h"
 #include "libcef/features/runtime_checks.h"
-#include "libcef/renderer/alloy/alloy_render_frame_observer.h"
 #include "libcef/renderer/alloy/alloy_render_thread_observer.h"
 #include "libcef/renderer/alloy/url_loader_throttle_provider_impl.h"
 #include "libcef/renderer/browser_impl.h"
-#include "libcef/renderer/browser_manager.h"
 #include "libcef/renderer/extensions/extensions_renderer_client.h"
 #include "libcef/renderer/extensions/print_render_frame_helper_delegate.h"
+#include "libcef/renderer/render_frame_observer.h"
+#include "libcef/renderer/render_manager.h"
 #include "libcef/renderer/thread_util.h"
 
 #include "base/command_line.h"
-#include "base/macros.h"
 #include "base/memory/ptr_util.h"
 #include "base/metrics/user_metrics_action.h"
 #include "base/path_service.h"
@@ -49,23 +47,25 @@
 #include "base/task/post_task.h"
 #include "build/build_config.h"
 #include "chrome/common/chrome_switches.h"
+#include "chrome/common/pdf_util.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/renderer/browser_exposed_renderer_interfaces.h"
 #include "chrome/renderer/chrome_content_renderer_client.h"
 #include "chrome/renderer/extensions/chrome_extensions_renderer_client.h"
 #include "chrome/renderer/loadtimes_extension_bindings.h"
-#include "chrome/renderer/media/chrome_key_systems.h"
 #include "chrome/renderer/pepper/chrome_pdf_print_client.h"
 #include "chrome/renderer/pepper/pepper_helper.h"
 #include "chrome/renderer/plugins/chrome_plugin_placeholder.h"
 #include "components/content_settings/core/common/content_settings_types.h"
 #include "components/nacl/common/nacl_constants.h"
+#include "components/pdf/common/internal_plugin_helpers.h"
+#include "components/pdf/renderer/internal_plugin_renderer_helpers.h"
+#include "components/pdf/renderer/pdf_find_in_page.h"
 #include "components/printing/renderer/print_render_frame_helper.h"
 #include "components/spellcheck/renderer/spellcheck.h"
 #include "components/spellcheck/renderer/spellcheck_provider.h"
 #include "components/visitedlink/renderer/visitedlink_reader.h"
 #include "components/web_cache/renderer/web_cache_impl.h"
-#include "content/common/frame_messages.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/render_process_host.h"
@@ -83,6 +83,7 @@
 #include "media/base/media.h"
 #include "mojo/public/cpp/bindings/binder_map.h"
 #include "mojo/public/cpp/bindings/generic_pending_receiver.h"
+#include "pdf/pdf_features.h"
 #include "printing/print_settings.h"
 #include "services/network/public/cpp/is_potentially_trustworthy.h"
 #include "services/service_manager/public/cpp/connector.h"
@@ -103,24 +104,14 @@
 #include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "ui/base/l10n/l10n_util.h"
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
 #include "base/mac/mac_util.h"
 #include "base/strings/sys_string_conversions.h"
 #endif
 
-namespace {
-
-bool IsStandaloneExtensionProcess() {
-  return extensions::ExtensionsEnabled() &&
-         extensions::CefExtensionsRendererClient::
-             IsStandaloneExtensionProcess();
-}
-
-}  // namespace
-
 AlloyContentRendererClient::AlloyContentRendererClient()
     : main_entry_time_(base::TimeTicks::Now()),
-      browser_manager_(new CefBrowserManager) {
+      render_manager_(new CefRenderManager) {
   if (extensions::ExtensionsEnabled()) {
     extensions_client_.reset(new extensions::CefExtensionsClient);
     extensions::ExtensionsClient::Set(extensions_client_.get());
@@ -160,7 +151,7 @@ void AlloyContentRendererClient::RunSingleProcessCleanup() {
   } else {
     base::PostTask(
         FROM_HERE, {content::BrowserThread::UI},
-        base::Bind(
+        base::BindOnce(
             &AlloyContentRendererClient::RunSingleProcessCleanupOnUIThread,
             base::Unretained(this)));
   }
@@ -198,10 +189,19 @@ void AlloyContentRendererClient::RenderThreadStarted() {
 
   content::RenderThread* thread = content::RenderThread::Get();
 
+  const bool is_extension = CefRenderManager::IsExtensionProcess();
+
   thread->SetRendererProcessType(
-      IsStandaloneExtensionProcess()
+      is_extension
           ? blink::scheduler::WebRendererProcessType::kExtensionRenderer
           : blink::scheduler::WebRendererProcessType::kRenderer);
+
+  if (is_extension) {
+    // The process name was set to "Renderer" in RendererMain(). Update it to
+    // "Extension Renderer" to highlight that it's hosting an extension.
+    base::trace_event::TraceLog::GetInstance()->set_process_name(
+        "Extension Renderer");
+  }
 
   thread->AddObserver(observer_.get());
 
@@ -215,7 +215,7 @@ void AlloyContentRendererClient::RenderThreadStarted() {
     base::CurrentThread::Get()->AddDestructionObserver(this);
   }
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
   {
     base::ScopedCFTypeRef<CFStringRef> key(
         base::SysUTF8ToCFStringRef("NSScrollViewRubberbanding"));
@@ -230,7 +230,7 @@ void AlloyContentRendererClient::RenderThreadStarted() {
     CFPreferencesSetAppValue(key, value, kCFPreferencesCurrentApplication);
     CFPreferencesAppSynchronize(kCFPreferencesCurrentApplication);
   }
-#endif  // defined(OS_MAC)
+#endif  // BUILDFLAG(IS_MAC)
 
   if (extensions::PdfExtensionEnabled()) {
     pdf_print_client_.reset(new ChromePDFPrintClient());
@@ -260,6 +260,8 @@ void AlloyContentRendererClient::ExposeInterfacesToBrowser(
             base::Unretained(spellcheck_.get())),
         task_runner);
   }
+
+  render_manager_->ExposeInterfacesToBrowser(binders);
 }
 
 void AlloyContentRendererClient::RenderThreadConnected() {
@@ -267,25 +269,23 @@ void AlloyContentRendererClient::RenderThreadConnected() {
   content::RenderThread* thread = content::RenderThread::Get();
   thread->RegisterExtension(extensions_v8::LoadTimesExtension::Get());
 
-  browser_manager_->RenderThreadConnected();
+  render_manager_->RenderThreadConnected();
 }
 
 void AlloyContentRendererClient::RenderFrameCreated(
     content::RenderFrame* render_frame) {
-  AlloyRenderFrameObserver* render_frame_observer =
-      new AlloyRenderFrameObserver(render_frame);
-  service_manager::BinderRegistry* registry = render_frame_observer->registry();
+  auto render_frame_observer = new CefRenderFrameObserver(render_frame);
 
   new PepperHelper(render_frame);
 
   if (extensions::ExtensionsEnabled()) {
-    extensions_renderer_client_->RenderFrameCreated(render_frame, registry);
+    extensions_renderer_client_->RenderFrameCreated(
+        render_frame, render_frame_observer->registry());
 
-    blink::AssociatedInterfaceRegistry* associated_interfaces =
-        render_frame_observer->associated_interfaces();
-    associated_interfaces->AddInterface(base::BindRepeating(
-        &extensions::MimeHandlerViewContainerManager::BindReceiver,
-        render_frame->GetRoutingID()));
+    render_frame_observer->associated_interfaces()->AddInterface(
+        base::BindRepeating(
+            &extensions::MimeHandlerViewContainerManager::BindReceiver,
+            render_frame->GetRoutingID()));
   }
 
   const base::CommandLine* command_line =
@@ -295,9 +295,9 @@ void AlloyContentRendererClient::RenderFrameCreated(
   }
 
   bool browser_created;
-  base::Optional<bool> is_windowless;
-  browser_manager_->RenderFrameCreated(render_frame, render_frame_observer,
-                                       browser_created, is_windowless);
+  absl::optional<bool> is_windowless;
+  render_manager_->RenderFrameCreated(render_frame, render_frame_observer,
+                                      browser_created, is_windowless);
   if (browser_created) {
     OnBrowserCreated(render_frame->GetRenderView(), is_windowless);
   }
@@ -308,15 +308,21 @@ void AlloyContentRendererClient::RenderFrameCreated(
         base::WrapUnique(
             new extensions::CefPrintRenderFrameHelperDelegate(*is_windowless)));
   }
+
+  if (base::FeatureList::IsEnabled(chrome_pdf::features::kPdfUnseasoned)) {
+    render_frame_observer->associated_interfaces()->AddInterface(
+        base::BindRepeating(&pdf::PdfFindInPageFactory::BindReceiver,
+                            render_frame->GetRoutingID()));
+  }
 }
 
-void AlloyContentRendererClient::RenderViewCreated(
-    content::RenderView* render_view) {
+void AlloyContentRendererClient::WebViewCreated(blink::WebView* web_view) {
   bool browser_created;
-  base::Optional<bool> is_windowless;
-  browser_manager_->RenderViewCreated(render_view, browser_created,
-                                      is_windowless);
+  absl::optional<bool> is_windowless;
+  render_manager_->WebViewCreated(web_view, browser_created, is_windowless);
   if (browser_created) {
+    auto render_view = content::RenderView::FromWebView(web_view);
+    CHECK(render_view);
     OnBrowserCreated(render_view, is_windowless);
   }
 }
@@ -353,6 +359,16 @@ bool AlloyContentRendererClient::IsPluginHandledExternally(
     ChromeExtensionsRendererClient::DidBlockMimeHandlerViewForDisallowedPlugin(
         plugin_element);
     return false;
+  }
+  if (plugin_info->actual_mime_type == pdf::kInternalPluginMimeType &&
+      pdf::IsInternalPluginExternallyHandled()) {
+    // Only actually treat the internal PDF plugin as externally handled if
+    // used within an origin allowed to create the internal PDF plugin;
+    // otherwise, let Blink try to create the in-process PDF plugin.
+    if (IsPdfInternalPluginAllowedOrigin(
+            render_frame->GetWebFrame()->GetSecurityOrigin())) {
+      return true;
+    }
   }
   return ChromeExtensionsRendererClient::MaybeCreateMimeHandlerView(
       plugin_element, original_url, plugin_info->actual_mime_type,
@@ -414,7 +430,11 @@ bool AlloyContentRendererClient::IsOriginIsolatedPepperPlugin(
 
 void AlloyContentRendererClient::AddSupportedKeySystems(
     std::vector<std::unique_ptr<::media::KeySystemProperties>>* key_systems) {
-  AddChromeKeySystems(key_systems);
+  key_systems_provider_.AddSupportedKeySystems(key_systems);
+}
+
+bool AlloyContentRendererClient::IsKeySystemsUpdateNeeded() {
+  return key_systems_provider_.IsKeySystemsUpdateNeeded();
 }
 
 void AlloyContentRendererClient::RunScriptsAtDocumentStart(
@@ -445,7 +465,7 @@ void AlloyContentRendererClient::DevToolsAgentAttached() {
     return;
   }
 
-  browser_manager_->DevToolsAgentAttached();
+  render_manager_->DevToolsAgentAttached();
 }
 
 void AlloyContentRendererClient::DevToolsAgentDetached() {
@@ -458,7 +478,7 @@ void AlloyContentRendererClient::DevToolsAgentDetached() {
     return;
   }
 
-  browser_manager_->DevToolsAgentDetached();
+  render_manager_->DevToolsAgentDetached();
 }
 
 std::unique_ptr<blink::URLLoaderThrottleProvider>
@@ -486,8 +506,8 @@ void AlloyContentRendererClient::WillDestroyCurrentMessageLoop() {
 
 void AlloyContentRendererClient::OnBrowserCreated(
     content::RenderView* render_view,
-    base::Optional<bool> is_windowless) {
-#if defined(OS_MAC)
+    absl::optional<bool> is_windowless) {
+#if BUILDFLAG(IS_MAC)
   const bool windowless = is_windowless.has_value() && *is_windowless;
 
   // FIXME: It would be better if this API would be a callback from the
@@ -528,7 +548,7 @@ void AlloyContentRendererClient::RunSingleProcessCleanupOnUIThread() {
 }
 
 // Enable deprecation warnings on Windows. See http://crbug.com/585142.
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #if defined(__clang__)
 #pragma GCC diagnostic pop
 #else

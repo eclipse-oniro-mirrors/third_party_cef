@@ -13,7 +13,7 @@
 #include "base/compiler_specific.h"
 
 // Enable deprecation warnings for MSVC and Clang. See http://crbug.com/585142.
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #if defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic error "-Wdeprecated-declarations"
@@ -174,7 +174,7 @@ class CefV8IsolateManager {
   v8::Isolate* isolate_;
   scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
 
-  typedef std::map<int, scoped_refptr<CefV8ContextState>> ContextMap;
+  using ContextMap = std::map<int, scoped_refptr<CefV8ContextState>>;
   ContextMap context_map_;
 
   // Used for globally tracked objects that are not associated with a particular
@@ -1176,7 +1176,7 @@ void CefV8ValueImpl::Handle::SetWeakIfNecessary() {
   if (!BelongsToCurrentThread()) {
     task_runner()->PostTask(
         FROM_HERE,
-        base::Bind(&CefV8ValueImpl::Handle::SetWeakIfNecessary, this));
+        base::BindOnce(&CefV8ValueImpl::Handle::SetWeakIfNecessary, this));
     return;
   }
 
@@ -2555,7 +2555,7 @@ bool CefV8StackFrameImpl::IsConstructor() {
 }
 
 // Enable deprecation warnings on Windows. See http://crbug.com/585142.
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #if defined(__clang__)
 #pragma GCC diagnostic pop
 #else

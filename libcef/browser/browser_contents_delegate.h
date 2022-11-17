@@ -10,6 +10,7 @@
 
 #include "libcef/browser/frame_host_impl.h"
 
+#include "base/callback_list.h"
 #include "base/observer_list.h"
 #include "content/public/browser/notification_observer.h"
 #include "content/public/browser/notification_registrar.h"
@@ -71,6 +72,10 @@ class CefBrowserContentsDelegate : public content::WebContentsDelegate,
   explicit CefBrowserContentsDelegate(
       scoped_refptr<CefBrowserInfo> browser_info);
 
+  CefBrowserContentsDelegate(const CefBrowserContentsDelegate&) = delete;
+  CefBrowserContentsDelegate& operator=(const CefBrowserContentsDelegate&) =
+      delete;
+
   void ObserveWebContents(content::WebContents* new_contents);
 
   // Manage observer objects. The observer must either outlive this object or
@@ -83,14 +88,14 @@ class CefBrowserContentsDelegate : public content::WebContentsDelegate,
       content::WebContents* source,
       const content::OpenURLParams& params) override;
   void LoadingStateChanged(content::WebContents* source,
-                           bool to_different_document) override;
+                           bool should_show_loading_ui) override;
   void UpdateTargetURL(content::WebContents* source, const GURL& url) override;
   bool DidAddMessageToConsole(content::WebContents* source,
                               blink::mojom::ConsoleMessageLevel log_level,
                               const std::u16string& message,
                               int32_t line_no,
                               const std::u16string& source_id) override;
-  void DidNavigateMainFramePostCommit(
+  void DidNavigatePrimaryMainFramePostCommit(
       content::WebContents* web_contents) override;
   void EnterFullscreenModeForTab(
       content::RenderFrameHost* requesting_frame,
@@ -107,10 +112,14 @@ class CefBrowserContentsDelegate : public content::WebContentsDelegate,
   void RenderFrameCreated(content::RenderFrameHost* render_frame_host) override;
   void RenderFrameHostChanged(content::RenderFrameHost* old_host,
                               content::RenderFrameHost* new_host) override;
+  void RenderFrameHostStateChanged(
+      content::RenderFrameHost* host,
+      content::RenderFrameHost::LifecycleState old_state,
+      content::RenderFrameHost::LifecycleState new_state) override;
   void RenderFrameDeleted(content::RenderFrameHost* render_frame_host) override;
-  void RenderViewDeleted(content::RenderViewHost* render_view_host) override;
   void RenderViewReady() override;
-  void RenderProcessGone(base::TerminationStatus status) override;
+  void PrimaryMainFrameRenderProcessGone(
+      base::TerminationStatus status) override;
   void OnFrameFocused(content::RenderFrameHost* render_frame_host) override;
   void DocumentAvailableInMainFrame(
       content::RenderFrameHost* render_frame_host) override;
@@ -121,8 +130,6 @@ class CefBrowserContentsDelegate : public content::WebContentsDelegate,
   void DidFailLoad(content::RenderFrameHost* render_frame_host,
                    const GURL& validated_url,
                    int error_code) override;
-  bool OnMessageReceived(const IPC::Message& message,
-                         content::RenderFrameHost* render_frame_host) override;
   void TitleWasSet(content::NavigationEntry* entry) override;
   void PluginCrashed(const base::FilePath& plugin_path,
                      base::ProcessId plugin_pid) override;
@@ -131,6 +138,7 @@ class CefBrowserContentsDelegate : public content::WebContentsDelegate,
       const std::vector<blink::mojom::FaviconURLPtr>& candidates) override;
   void OnWebContentsFocused(
       content::RenderWidgetHost* render_widget_host) override;
+  void OnFocusChangedInPage(content::FocusedNodeDetails* details) override;
   void WebContentsDestroyed() override;
 
   // NotificationObserver methods.
@@ -191,8 +199,6 @@ class CefBrowserContentsDelegate : public content::WebContentsDelegate,
 
   // True if the focus is currently on an editable field on the page.
   bool focus_on_editable_field_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(CefBrowserContentsDelegate);
 };
 
 #endif  // CEF_LIBCEF_BROWSER_BROWSER_CONTENTS_DELEGATE_H_

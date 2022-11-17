@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=8e09f43f2c7faf35a14e7367b2156f4d4e89b74d$
+// $hash=ec2815ca7044a7ee3ba7f0afcb293a31da5a9feb$
 //
 
 #ifndef CEF_LIBCEF_DLL_WRAPPER_TYPES_H_
@@ -65,6 +65,7 @@ enum CefWrapperType {
   WT_FIND_HANDLER,
   WT_FOCUS_HANDLER,
   WT_FRAME,
+  WT_FRAME_HANDLER,
   WT_GET_EXTENSION_RESOURCE_CALLBACK,
   WT_IMAGE,
   WT_JSDIALOG_CALLBACK,
@@ -89,6 +90,7 @@ enum CefWrapperType {
   WT_MENU_MODEL_DELEGATE,
   WT_NAVIGATION_ENTRY,
   WT_NAVIGATION_ENTRY_VISITOR,
+  WT_OVERLAY_CONTROLLER,
   WT_PANEL,
   WT_PANEL_DELEGATE,
   WT_PDF_PRINT_CALLBACK,
@@ -100,12 +102,10 @@ enum CefWrapperType {
   WT_PRINT_SETTINGS,
   WT_PROCESS_MESSAGE,
   WT_READ_HANDLER,
-  WT_REGISTER_CDM_CALLBACK,
   WT_REGISTRATION,
   WT_RENDER_HANDLER,
   WT_RENDER_PROCESS_HANDLER,
   WT_REQUEST,
-  WT_REQUEST_CALLBACK,
   WT_REQUEST_CONTEXT,
   WT_REQUEST_CONTEXT_HANDLER,
   WT_REQUEST_HANDLER,

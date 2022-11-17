@@ -6,6 +6,7 @@
 
 #include "base/files/file_path.h"
 #include "base/logging.h"
+#include "base/strings/string_util.h"
 
 CefCommandLineImpl::CefCommandLineImpl(base::CommandLine* value,
                                        bool will_delete,
@@ -32,7 +33,7 @@ CefRefPtr<CefCommandLine> CefCommandLineImpl::Copy() {
 }
 
 void CefCommandLineImpl::InitFromArgv(int argc, const char* const* argv) {
-#if !defined(OS_WIN)
+#if !BUILDFLAG(IS_WIN)
   CEF_VALUE_VERIFY_RETURN_VOID(true);
   mutable_value()->InitFromArgv(argc, argv);
 #else
@@ -41,7 +42,7 @@ void CefCommandLineImpl::InitFromArgv(int argc, const char* const* argv) {
 }
 
 void CefCommandLineImpl::InitFromString(const CefString& command_line) {
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   CEF_VALUE_VERIFY_RETURN_VOID(true);
   const std::wstring& str16 = command_line;
   mutable_value()->ParseFromString(str16);
@@ -90,12 +91,13 @@ bool CefCommandLineImpl::HasSwitches() {
 
 bool CefCommandLineImpl::HasSwitch(const CefString& name) {
   CEF_VALUE_VERIFY_RETURN(false, false);
-  return const_value().HasSwitch(name.ToString());
+  return const_value().HasSwitch(base::ToLowerASCII(name.ToString()));
 }
 
 CefString CefCommandLineImpl::GetSwitchValue(const CefString& name) {
   CEF_VALUE_VERIFY_RETURN(false, CefString());
-  return const_value().GetSwitchValueNative(name.ToString());
+  return const_value().GetSwitchValueNative(
+      base::ToLowerASCII(name.ToString()));
 }
 
 void CefCommandLineImpl::GetSwitches(SwitchMap& switches) {
@@ -108,16 +110,16 @@ void CefCommandLineImpl::GetSwitches(SwitchMap& switches) {
 
 void CefCommandLineImpl::AppendSwitch(const CefString& name) {
   CEF_VALUE_VERIFY_RETURN_VOID(true);
-  mutable_value()->AppendSwitch(name);
+  mutable_value()->AppendSwitch(name.ToString());
 }
 
 void CefCommandLineImpl::AppendSwitchWithValue(const CefString& name,
                                                const CefString& value) {
   CEF_VALUE_VERIFY_RETURN_VOID(true);
-#if defined(OS_WIN)
-  mutable_value()->AppendSwitchNative(name, value.ToWString());
+#if BUILDFLAG(IS_WIN)
+  mutable_value()->AppendSwitchNative(name.ToString(), value.ToWString());
 #else
-  mutable_value()->AppendSwitchNative(name, value.ToString());
+  mutable_value()->AppendSwitchNative(name.ToString(), value.ToString());
 #endif
 }
 
@@ -136,12 +138,20 @@ void CefCommandLineImpl::GetArguments(ArgumentList& arguments) {
 
 void CefCommandLineImpl::AppendArgument(const CefString& argument) {
   CEF_VALUE_VERIFY_RETURN_VOID(true);
-  mutable_value()->AppendArgNative(argument);
+#if BUILDFLAG(IS_WIN)
+  mutable_value()->AppendArgNative(argument.ToWString());
+#else
+  mutable_value()->AppendArgNative(argument.ToString());
+#endif
 }
 
 void CefCommandLineImpl::PrependWrapper(const CefString& wrapper) {
   CEF_VALUE_VERIFY_RETURN_VOID(true);
-  mutable_value()->PrependWrapper(wrapper);
+#if BUILDFLAG(IS_WIN)
+  mutable_value()->PrependWrapper(wrapper.ToWString());
+#else
+  mutable_value()->PrependWrapper(wrapper.ToString());
+#endif
 }
 
 // CefCommandLine implementation.

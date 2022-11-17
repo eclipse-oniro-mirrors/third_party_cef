@@ -7,7 +7,7 @@
 #include "base/compiler_specific.h"
 
 // Enable deprecation warnings on Windows. See http://crbug.com/585142.
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #if defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic error "-Wdeprecated-declarations"
@@ -18,11 +18,11 @@
 #endif
 
 #include "libcef/common/app_manager.h"
-#include "libcef/common/cef_messages.h"
+#include "libcef/common/frame_util.h"
 #include "libcef/common/net/http_header_utils.h"
 #include "libcef/common/process_message_impl.h"
 #include "libcef/common/request_impl.h"
-#include "libcef/common/response_manager.h"
+#include "libcef/common/string_util.h"
 #include "libcef/renderer/blink_glue.h"
 #include "libcef/renderer/browser_impl.h"
 #include "libcef/renderer/dom_document_impl.h"
@@ -48,13 +48,23 @@
 #include "third_party/blink/public/web/web_script_source.h"
 #include "third_party/blink/public/web/web_view.h"
 
+namespace {
+
+// Maximum number of times to retry the browser connection.
+constexpr size_t kConnectionRetryMaxCt = 3U;
+
+// Length of time to wait before initiating a browser connection retry.
+constexpr auto kConnectionRetryDelay = base::Seconds(1);
+
+// Length of time to wait for the browser connection ACK before timing out.
+constexpr auto kConnectionTimeout = base::Seconds(4);
+
+}  // namespace
+
 CefFrameImpl::CefFrameImpl(CefBrowserImpl* browser,
                            blink::WebLocalFrame* frame,
                            int64_t frame_id)
-    : browser_(browser),
-      frame_(frame),
-      frame_id_(frame_id),
-      response_manager_(new CefResponseManager) {}
+    : browser_(browser), frame_(frame), frame_id_(frame_id) {}
 
 CefFrameImpl::~CefFrameImpl() {}
 
@@ -65,31 +75,31 @@ bool CefFrameImpl::IsValid() {
 }
 
 void CefFrameImpl::Undo() {
-  ExecuteCommand("Undo");
+  SendCommand("Undo");
 }
 
 void CefFrameImpl::Redo() {
-  ExecuteCommand("Redo");
+  SendCommand("Redo");
 }
 
 void CefFrameImpl::Cut() {
-  ExecuteCommand("Cut");
+  SendCommand("Cut");
 }
 
 void CefFrameImpl::Copy() {
-  ExecuteCommand("Copy");
+  SendCommand("Copy");
 }
 
 void CefFrameImpl::Paste() {
-  ExecuteCommand("Paste");
+  SendCommand("Paste");
 }
 
 void CefFrameImpl::Delete() {
-  ExecuteCommand("Delete");
+  SendCommand("Delete");
 }
 
 void CefFrameImpl::SelectAll() {
-  ExecuteCommand("SelectAll");
+  SendCommand("SelectAll");
 }
 
 void CefFrameImpl::ViewSource() {
@@ -99,7 +109,8 @@ void CefFrameImpl::ViewSource() {
 void CefFrameImpl::GetSource(CefRefPtr<CefStringVisitor> visitor) {
   CEF_REQUIRE_RT_RETURN_VOID();
   if (frame_) {
-    const CefString& content = blink_glue::DumpDocumentMarkup(frame_);
+    CefString content;
+    string_util::GetCefString(blink_glue::DumpDocumentMarkup(frame_), content);
     visitor->Visit(content);
   }
 }
@@ -107,7 +118,8 @@ void CefFrameImpl::GetSource(CefRefPtr<CefStringVisitor> visitor) {
 void CefFrameImpl::GetText(CefRefPtr<CefStringVisitor> visitor) {
   CEF_REQUIRE_RT_RETURN_VOID();
   if (frame_) {
-    const CefString& content = blink_glue::DumpDocumentText(frame_);
+    CefString content;
+    string_util::GetCefString(blink_glue::DumpDocumentText(frame_), content);
     visitor->Visit(content);
   }
 }
@@ -118,27 +130,9 @@ void CefFrameImpl::LoadRequest(CefRefPtr<CefRequest> request) {
   if (!frame_)
     return;
 
-  CefMsg_LoadRequest_Params params;
-  params.url = GURL(std::string(request->GetURL()));
-  params.method = request->GetMethod();
-  params.site_for_cookies = net::SiteForCookies::FromUrl(
-      GURL(request->GetFirstPartyForCookies().ToString()));
-
-  CefRequest::HeaderMap headerMap;
-  request->GetHeaderMap(headerMap);
-  if (!headerMap.empty())
-    params.headers = HttpHeaderUtils::GenerateHeaders(headerMap);
-
-  CefRefPtr<CefPostData> postData = request->GetPostData();
-  if (postData.get()) {
-    CefPostDataImpl* impl = static_cast<CefPostDataImpl*>(postData.get());
-    params.upload_data = new net::UploadData();
-    impl->Get(*params.upload_data.get());
-  }
-
-  params.load_flags = request->GetFlags();
-
-  OnLoadRequest(params);
+  auto params = cef::mojom::RequestParams::New();
+  static_cast<CefRequestImpl*>(request.get())->Get(params);
+  LoadRequest(std::move(params));
 }
 
 void CefFrameImpl::LoadURL(const CefString& url) {
@@ -147,28 +141,16 @@ void CefFrameImpl::LoadURL(const CefString& url) {
   if (!frame_)
     return;
 
-  CefMsg_LoadRequest_Params params;
-  params.url = GURL(url.ToString());
-  params.method = "GET";
-
-  OnLoadRequest(params);
+  auto params = cef::mojom::RequestParams::New();
+  params->url = GURL(url.ToString());
+  params->method = "GET";
+  LoadRequest(std::move(params));
 }
 
 void CefFrameImpl::ExecuteJavaScript(const CefString& jsCode,
                                      const CefString& scriptUrl,
                                      int startLine) {
-  CEF_REQUIRE_RT_RETURN_VOID();
-
-  if (jsCode.empty())
-    return;
-  if (startLine < 1)
-    startLine = 1;
-
-  if (frame_) {
-    GURL gurl = GURL(scriptUrl.ToString());
-    frame_->ExecuteScript(blink::WebScriptSource(
-        blink::WebString::FromUTF16(jsCode.ToString16()), gurl, startLine));
-  }
+  SendJavaScript(jsCode, scriptUrl, startLine);
 }
 
 bool CefFrameImpl::IsMain() {
@@ -279,12 +261,22 @@ CefRefPtr<CefURLRequest> CefFrameImpl::CreateURLRequest(
 
 void CefFrameImpl::SendProcessMessage(CefProcessId target_process,
                                       CefRefPtr<CefProcessMessage> message) {
-  Cef_Request_Params params;
-  CefProcessMessageImpl* impl =
-      static_cast<CefProcessMessageImpl*>(message.get());
-  if (impl->CopyTo(params)) {
-    SendProcessMessage(target_process, params.name, &params.arguments, true);
-  }
+  CEF_REQUIRE_RT_RETURN_VOID();
+  DCHECK_EQ(PID_BROWSER, target_process);
+  DCHECK(message && message->IsValid());
+  if (!message || !message->IsValid())
+    return;
+
+  SendToBrowserFrame(
+      __FUNCTION__,
+      base::BindOnce(
+          [](CefRefPtr<CefProcessMessage> message,
+             const BrowserFrameType& browser_frame) {
+            auto impl = static_cast<CefProcessMessageImpl*>(message.get());
+            browser_frame->SendMessage(impl->GetName(),
+                                       impl->TakeArgumentList());
+          },
+          message));
 }
 
 std::unique_ptr<blink::WebURLLoader> CefFrameImpl::CreateURLLoader() {
@@ -301,15 +293,12 @@ std::unique_ptr<blink::WebURLLoader> CefFrameImpl::CreateURLLoader() {
   if (!url_loader_factory_)
     return nullptr;
 
-  // KeepAlive is not supported.
-  mojo::PendingRemote<blink::mojom::KeepAliveHandle> keep_alive_handle =
-      mojo::NullRemote();
-
   return url_loader_factory_->CreateURLLoader(
       blink::WebURLRequest(),
       blink_glue::CreateResourceLoadingTaskRunnerHandle(frame_),
       blink_glue::CreateResourceLoadingMaybeUnfreezableTaskRunnerHandle(frame_),
-      std::move(keep_alive_handle), blink::WebBackForwardCacheLoaderHelper());
+      /*keep_alive_handle=*/mojo::NullRemote(),
+      blink::WebBackForwardCacheLoaderHelper());
 }
 
 std::unique_ptr<blink::ResourceLoadInfoNotifierWrapper>
@@ -324,21 +313,15 @@ CefFrameImpl::CreateResourceLoadInfoNotifierWrapper() {
 }
 
 void CefFrameImpl::OnAttached() {
-  Send(new CefHostMsg_FrameAttached(MSG_ROUTING_NONE));
+  // Called indirectly from RenderFrameCreated.
+  ConnectBrowserFrame();
 }
 
-bool CefFrameImpl::OnMessageReceived(const IPC::Message& message) {
-  bool handled = true;
-  IPC_BEGIN_MESSAGE_MAP(CefFrameImpl, message)
-    IPC_MESSAGE_HANDLER(CefMsg_Request, OnRequest)
-    IPC_MESSAGE_HANDLER(CefMsg_Response, OnResponse)
-    IPC_MESSAGE_HANDLER(CefMsg_ResponseAck, OnResponseAck)
-    IPC_MESSAGE_HANDLER(CefMsg_LoadRequest, OnLoadRequest)
-    IPC_MESSAGE_HANDLER(CefMsg_DidStopLoading, OnDidStopLoading)
-    IPC_MESSAGE_HANDLER(CefMsg_MoveOrResizeStarted, OnMoveOrResizeStarted)
-    IPC_MESSAGE_UNHANDLED(handled = false)
-  IPC_END_MESSAGE_MAP()
-  return handled;
+void CefFrameImpl::OnWasShown() {
+  if (browser_connection_state_ == ConnectionState::DISCONNECTED) {
+    // Reconnect a frame that has exited the bfcache.
+    ConnectBrowserFrame();
+  }
 }
 
 void CefFrameImpl::OnDidFinishLoad() {
@@ -349,8 +332,15 @@ void CefFrameImpl::OnDidFinishLoad() {
 
   blink::WebDocumentLoader* dl = frame_->GetDocumentLoader();
   const int http_status_code = dl->GetResponse().HttpStatusCode();
-  Send(new CefHostMsg_DidFinishLoad(MSG_ROUTING_NONE, dl->GetUrl(),
-                                    http_status_code));
+
+  SendToBrowserFrame(__FUNCTION__,
+                     base::BindOnce(
+                         [](const GURL& url, int http_status_code,
+                            const BrowserFrameType& browser_frame) {
+                           browser_frame->DidFinishFrameLoad(url,
+                                                             http_status_code);
+                         },
+                         dl->GetUrl(), http_status_code));
 
   CefRefPtr<CefApp> app = CefAppManager::Get()->GetApplication();
   if (app) {
@@ -365,176 +355,328 @@ void CefFrameImpl::OnDidFinishLoad() {
 }
 
 void CefFrameImpl::OnDraggableRegionsChanged() {
+  // Match the behavior in ChromeRenderFrameObserver::DraggableRegionsChanged.
+  // Only the main frame is allowed to control draggable regions, to avoid other
+  // frames manipulate the regions in the browser process.
+  if (frame_->Parent() != nullptr)
+    return;
+
   blink::WebVector<blink::WebDraggableRegion> webregions =
       frame_->GetDocument().DraggableRegions();
-  std::vector<Cef_DraggableRegion_Params> regions;
-  for (size_t i = 0; i < webregions.size(); ++i) {
-    Cef_DraggableRegion_Params region;
+  std::vector<cef::mojom::DraggableRegionEntryPtr> regions;
+  if (!webregions.empty()) {
     auto render_frame = content::RenderFrameImpl::FromWebFrame(frame_);
-    render_frame->ConvertViewportToWindow(&webregions[i].bounds);
-    region.bounds = webregions[i].bounds;
-    region.draggable = webregions[i].draggable;
-    regions.push_back(region);
+
+    regions.reserve(webregions.size());
+    for (const auto& webregion : webregions) {
+      auto region = cef::mojom::DraggableRegionEntry::New(webregion.bounds,
+                                                          webregion.draggable);
+      render_frame->ConvertViewportToWindow(&region->bounds);
+      regions.push_back(std::move(region));
+    }
   }
-  Send(new CefHostMsg_UpdateDraggableRegions(MSG_ROUTING_NONE, regions));
+
+  using RegionsArg =
+      absl::optional<std::vector<cef::mojom::DraggableRegionEntryPtr>>;
+  RegionsArg regions_arg =
+      regions.empty() ? absl::nullopt : absl::make_optional(std::move(regions));
+
+  SendToBrowserFrame(
+      __FUNCTION__,
+      base::BindOnce(
+          [](RegionsArg regions_arg, const BrowserFrameType& browser_frame) {
+            browser_frame->UpdateDraggableRegions(std::move(regions_arg));
+          },
+          std::move(regions_arg)));
+}
+
+void CefFrameImpl::OnContextCreated() {
+  context_created_ = true;
+
+  CHECK(frame_);
+  while (!queued_context_actions_.empty()) {
+    auto& action = queued_context_actions_.front();
+    std::move(action.second).Run(frame_);
+    queued_context_actions_.pop();
+  }
 }
 
 void CefFrameImpl::OnDetached() {
+  // Called when this frame has been detached from the view. This *will* be
+  // called for child frames when a parent frame is detached.
   // The browser may hold the last reference to |this|. Take a reference here to
   // keep |this| alive until after this method returns.
   CefRefPtr<CefFrameImpl> self = this;
 
+  frame_ = nullptr;
+
   browser_->FrameDetached(frame_id_);
 
+  OnBrowserFrameDisconnect();
+
   browser_ = nullptr;
-  frame_ = nullptr;
   url_loader_factory_.reset();
-  response_manager_.reset();
+
+  // In case we never attached.
+  while (!queued_browser_actions_.empty()) {
+    auto& action = queued_browser_actions_.front();
+    LOG(WARNING) << action.first << " sent to detached frame "
+                 << frame_util::GetFrameDebugString(frame_id_)
+                 << " will be ignored";
+    queued_browser_actions_.pop();
+  }
+
+  // In case we're destroyed without the context being created.
+  while (!queued_context_actions_.empty()) {
+    auto& action = queued_context_actions_.front();
+    LOG(WARNING) << action.first << " sent to detached frame "
+                 << frame_util::GetFrameDebugString(frame_id_)
+                 << " will be ignored";
+    queued_context_actions_.pop();
+  }
 }
 
-void CefFrameImpl::ExecuteCommand(const std::string& command) {
+void CefFrameImpl::ExecuteOnLocalFrame(const std::string& function_name,
+                                       LocalFrameAction action) {
   CEF_REQUIRE_RT_RETURN_VOID();
-  if (frame_)
-    frame_->ExecuteCommand(blink::WebString::FromUTF8(command));
-}
 
-void CefFrameImpl::SendProcessMessage(CefProcessId target_process,
-                                      const std::string& name,
-                                      base::ListValue* arguments,
-                                      bool user_initiated) {
-  DCHECK_EQ(PID_BROWSER, target_process);
-  DCHECK(!name.empty());
-
-  if (!frame_)
-    return;
-
-  Cef_Request_Params params;
-  params.name = name;
-  if (arguments)
-    params.arguments.Swap(arguments);
-  params.user_initiated = user_initiated;
-  params.request_id = -1;
-  params.expect_response = false;
-
-  Send(new CefHostMsg_Request(MSG_ROUTING_NONE, params));
-}
-
-void CefFrameImpl::Send(IPC::Message* message) {
-  if (!frame_) {
-    delete message;
+  if (!context_created_) {
+    queued_context_actions_.push(
+        std::make_pair(function_name, std::move(action)));
     return;
   }
 
-  auto render_frame = content::RenderFrame::FromWebFrame(frame_);
-  message->set_routing_id(render_frame->GetRoutingID());
-  render_frame->Send(message);
-}
-
-void CefFrameImpl::OnRequest(const Cef_Request_Params& params) {
-  DCHECK(browser_);
-  DCHECK(frame_);
-
-  bool success = false;
-  std::string response;
-  bool expect_response_ack = false;
-
-  TRACE_EVENT2("cef", "CefBrowserImpl::OnRequest", "request_id",
-               params.request_id, "expect_response",
-               params.expect_response ? 1 : 0);
-
-  if (params.user_initiated) {
-    // Give the user a chance to handle the request.
-    CefRefPtr<CefApp> app = CefAppManager::Get()->GetApplication();
-    if (app.get()) {
-      CefRefPtr<CefRenderProcessHandler> handler =
-          app->GetRenderProcessHandler();
-      if (handler.get()) {
-        CefRefPtr<CefProcessMessageImpl> message(new CefProcessMessageImpl(
-            const_cast<Cef_Request_Params*>(&params), false, true));
-        success = handler->OnProcessMessageReceived(browser_, this, PID_BROWSER,
-                                                    message.get());
-        message->Detach(nullptr);
-      }
-    }
-  } else if (params.name == "execute-code") {
-    // Execute code.
-    DCHECK_EQ(params.arguments.GetSize(), (size_t)4);
-
-    bool is_javascript = false;
-    std::string code, script_url;
-    int script_start_line = 0;
-
-    params.arguments.GetBoolean(0, &is_javascript);
-    params.arguments.GetString(1, &code);
-    DCHECK(!code.empty());
-    params.arguments.GetString(2, &script_url);
-    params.arguments.GetInteger(3, &script_start_line);
-    DCHECK_GE(script_start_line, 0);
-
-    if (is_javascript) {
-      frame_->ExecuteScript(
-          blink::WebScriptSource(blink::WebString::FromUTF8(code),
-                                 GURL(script_url), script_start_line));
-      success = true;
-    } else {
-      // TODO(cef): implement support for CSS code.
-      NOTIMPLEMENTED();
-    }
-  } else if (params.name == "execute-command") {
-    // Execute command.
-    DCHECK_EQ(params.arguments.GetSize(), (size_t)1);
-
-    std::string command;
-
-    params.arguments.GetString(0, &command);
-    DCHECK(!command.empty());
-
-    if (base::LowerCaseEqualsASCII(command, "getsource")) {
-      response = blink_glue::DumpDocumentMarkup(frame_);
-      success = true;
-    } else if (base::LowerCaseEqualsASCII(command, "gettext")) {
-      response = blink_glue::DumpDocumentText(frame_);
-      success = true;
-    } else if (frame_->ExecuteCommand(blink::WebString::FromUTF8(command))) {
-      success = true;
-    }
+  if (frame_) {
+    std::move(action).Run(frame_);
   } else {
-    // Invalid request.
-    NOTREACHED();
-  }
-
-  if (params.expect_response) {
-    DCHECK_GE(params.request_id, 0);
-
-    // Send a response to the browser.
-    Cef_Response_Params response_params;
-    response_params.request_id = params.request_id;
-    response_params.success = success;
-    response_params.response = response;
-    response_params.expect_response_ack = expect_response_ack;
-    Send(new CefHostMsg_Response(MSG_ROUTING_NONE, response_params));
+    LOG(WARNING) << function_name << " sent to detached frame "
+                 << frame_util::GetFrameDebugString(frame_id_)
+                 << " will be ignored";
   }
 }
 
-void CefFrameImpl::OnResponse(const Cef_Response_Params& params) {
-  response_manager_->RunHandler(params);
-  if (params.expect_response_ack)
-    Send(new CefHostMsg_ResponseAck(MSG_ROUTING_NONE, params.request_id));
+void CefFrameImpl::ConnectBrowserFrame() {
+  DCHECK(browser_connection_state_ == ConnectionState::DISCONNECTED ||
+         browser_connection_state_ == ConnectionState::RECONNECT_PENDING);
+
+  // Don't attempt to connect an invalid or bfcache'd frame. If a bfcache'd
+  // frame returns to active status a reconnect will be triggered via
+  // OnWasShown().
+  if (!frame_ || blink_glue::IsInBackForwardCache(frame_)) {
+    browser_connection_state_ = ConnectionState::DISCONNECTED;
+    browser_connect_timer_.Stop();
+    LOG(INFO) << "Connection retry canceled for frame "
+              << frame_util::GetFrameDebugString(frame_id_);
+    return;
+  }
+
+  if (browser_connect_retry_ct_ > 0) {
+    LOG(INFO) << "Connection retry " << browser_connect_retry_ct_ << "/"
+              << kConnectionRetryMaxCt << " for frame "
+              << frame_util::GetFrameDebugString(frame_id_);
+  }
+
+  browser_connection_state_ = ConnectionState::CONNECTION_PENDING;
+  browser_connect_timer_.Start(FROM_HERE, kConnectionTimeout, this,
+                               &CefFrameImpl::OnBrowserFrameTimeout);
+
+  auto& browser_frame = GetBrowserFrame(/*expect_acked=*/false);
+  CHECK(browser_frame);
+
+  // If the channel is working we should get a call to FrameAttachedAck().
+  // Otherwise, OnBrowserFrameDisconnect() should be called to retry the
+  // connection.
+  browser_frame->FrameAttached(receiver_.BindNewPipeAndPassRemote(),
+                               browser_connect_retry_ct_ > 0);
+  receiver_.set_disconnect_handler(
+      base::BindOnce(&CefFrameImpl::OnBrowserFrameDisconnect, this));
 }
 
-void CefFrameImpl::OnResponseAck(int request_id) {
-  response_manager_->RunAckHandler(request_id);
+const mojo::Remote<cef::mojom::BrowserFrame>& CefFrameImpl::GetBrowserFrame(
+    bool expect_acked) {
+  DCHECK_EQ(expect_acked,
+            browser_connection_state_ == ConnectionState::CONNECTION_ACKED);
+
+  if (!browser_frame_.is_bound()) {
+    auto render_frame = content::RenderFrameImpl::FromWebFrame(frame_);
+    if (render_frame) {
+      // Triggers creation of a CefBrowserFrame in the browser process.
+      render_frame->GetBrowserInterfaceBroker()->GetInterface(
+          browser_frame_.BindNewPipeAndPassReceiver());
+      browser_frame_.set_disconnect_handler(
+          base::BindOnce(&CefFrameImpl::OnBrowserFrameDisconnect, this));
+    }
+  }
+  return browser_frame_;
 }
 
-void CefFrameImpl::OnDidStopLoading() {
+void CefFrameImpl::OnBrowserFrameTimeout() {
+  LOG(ERROR) << "Connection timeout for frame "
+             << frame_util::GetFrameDebugString(frame_id_);
+  OnBrowserFrameDisconnect();
+}
+
+void CefFrameImpl::OnBrowserFrameDisconnect() {
+  // Ignore multiple calls in close proximity (which may occur if both
+  // |browser_frame_| and |receiver_| disconnect). |frame_| will be nullptr
+  // when called from/after OnDetached().
+  if (frame_ &&
+      browser_connection_state_ == ConnectionState::RECONNECT_PENDING) {
+    return;
+  }
+
+  browser_frame_.reset();
+  receiver_.reset();
+  browser_connection_state_ = ConnectionState::DISCONNECTED;
+  browser_connect_timer_.Stop();
+
+  // Only retry if the frame is still valid.
+  if (frame_) {
+    if (browser_connect_retry_ct_++ < kConnectionRetryMaxCt) {
+      // Retry after a delay in case the frame is currently navigating, being
+      // destroyed, or entering the bfcache. In the navigation case the retry
+      // will likely succeed. In the destruction case the retry will be
+      // ignored/canceled due to OnDetached(). In the bfcache case the status
+      // may not be updated immediately, so we allow the reconnect timer to
+      // trigger and check the status in ConnectBrowserFrame() instead.
+      browser_connection_state_ = ConnectionState::RECONNECT_PENDING;
+      browser_connect_timer_.Start(FROM_HERE, kConnectionRetryDelay, this,
+                                   &CefFrameImpl::ConnectBrowserFrame);
+    } else {
+      // Trigger a crash in official builds.
+      LOG(FATAL) << "Connection retry failure for frame "
+                 << frame_util::GetFrameDebugString(frame_id_);
+    }
+  }
+}
+
+void CefFrameImpl::SendToBrowserFrame(const std::string& function_name,
+                                      BrowserFrameAction action) {
+  if (!frame_) {
+    // We've been detached.
+    LOG(WARNING) << function_name << " sent to detached frame "
+                 << frame_util::GetFrameDebugString(frame_id_)
+                 << " will be ignored";
+    return;
+  }
+
+  if (browser_connection_state_ != ConnectionState::CONNECTION_ACKED) {
+    // Queue actions until we're notified by the browser that it's ready to
+    // handle them.
+    queued_browser_actions_.push(
+        std::make_pair(function_name, std::move(action)));
+    return;
+  }
+
+  auto& browser_frame = GetBrowserFrame();
+  CHECK(browser_frame);
+
+  std::move(action).Run(browser_frame);
+}
+
+void CefFrameImpl::FrameAttachedAck() {
+  // Sent from the browser process in response to ConnectBrowserFrame() sending
+  // FrameAttached().
+  CHECK_EQ(ConnectionState::CONNECTION_PENDING, browser_connection_state_);
+  browser_connection_state_ = ConnectionState::CONNECTION_ACKED;
+  browser_connect_retry_ct_ = 0;
+  browser_connect_timer_.Stop();
+
+  auto& browser_frame = GetBrowserFrame();
+  CHECK(browser_frame);
+
+  while (!queued_browser_actions_.empty()) {
+    std::move(queued_browser_actions_.front().second).Run(browser_frame);
+    queued_browser_actions_.pop();
+  }
+}
+
+void CefFrameImpl::SendMessage(const std::string& name, base::Value arguments) {
+  if (auto app = CefAppManager::Get()->GetApplication()) {
+    if (auto handler = app->GetRenderProcessHandler()) {
+      auto& list_value = base::Value::AsListValue(arguments);
+      CefRefPtr<CefProcessMessageImpl> message(new CefProcessMessageImpl(
+          name, std::move(const_cast<base::ListValue&>(list_value)),
+          /*read_only=*/true));
+      handler->OnProcessMessageReceived(browser_, this, PID_BROWSER,
+                                        message.get());
+    }
+  }
+}
+
+void CefFrameImpl::SendCommand(const std::string& command) {
+  ExecuteOnLocalFrame(
+      __FUNCTION__,
+      base::BindOnce(
+          [](const std::string& command, blink::WebLocalFrame* frame) {
+            frame->ExecuteCommand(blink::WebString::FromUTF8(command));
+          },
+          command));
+}
+
+void CefFrameImpl::SendCommandWithResponse(
+    const std::string& command,
+    cef::mojom::RenderFrame::SendCommandWithResponseCallback callback) {
+  ExecuteOnLocalFrame(
+      __FUNCTION__,
+      base::BindOnce(
+          [](const std::string& command,
+             cef::mojom::RenderFrame::SendCommandWithResponseCallback callback,
+             blink::WebLocalFrame* frame) {
+            blink::WebString response;
+
+            if (base::LowerCaseEqualsASCII(command, "getsource")) {
+              response = blink_glue::DumpDocumentMarkup(frame);
+            } else if (base::LowerCaseEqualsASCII(command, "gettext")) {
+              response = blink_glue::DumpDocumentText(frame);
+            }
+
+            std::move(callback).Run(
+                string_util::CreateSharedMemoryRegion(response));
+          },
+          command, std::move(callback)));
+}
+
+void CefFrameImpl::SendJavaScript(const std::u16string& jsCode,
+                                  const std::string& scriptUrl,
+                                  int32_t startLine) {
+  ExecuteOnLocalFrame(
+      __FUNCTION__,
+      base::BindOnce(
+          [](const std::u16string& jsCode, const std::string& scriptUrl,
+             blink::WebLocalFrame* frame) {
+            frame->ExecuteScript(blink::WebScriptSource(
+                blink::WebString::FromUTF16(jsCode), GURL(scriptUrl)));
+          },
+          jsCode, scriptUrl));
+}
+
+void CefFrameImpl::LoadRequest(cef::mojom::RequestParamsPtr params) {
+  ExecuteOnLocalFrame(
+      __FUNCTION__,
+      base::BindOnce(
+          [](cef::mojom::RequestParamsPtr params, blink::WebLocalFrame* frame) {
+            blink::WebURLRequest request;
+            CefRequestImpl::Get(params, request);
+            blink_glue::StartNavigation(frame, request);
+          },
+          std::move(params)));
+}
+
+void CefFrameImpl::DidStopLoading() {
   // We should only receive this notification for the highest-level LocalFrame
-  // in this frame's in-process subtree. If there are multiple of these for the
-  // same browser then the other occurrences will be discarded in
+  // in this frame's in-process subtree. If there are multiple of these for
+  // the same browser then the other occurrences will be discarded in
   // OnLoadingStateChange.
   browser_->OnLoadingStateChange(false);
+
+  // Refresh draggable regions. Otherwise, we may not receive updated regions
+  // after navigation because LocalFrameView::UpdateDocumentAnnotatedRegion
+  // lacks sufficient context.
+  OnDraggableRegionsChanged();
 }
 
-void CefFrameImpl::OnMoveOrResizeStarted() {
+void CefFrameImpl::MoveOrResizeStarted() {
   if (frame_) {
     auto web_view = frame_->View();
     if (web_view)
@@ -542,17 +684,8 @@ void CefFrameImpl::OnMoveOrResizeStarted() {
   }
 }
 
-void CefFrameImpl::OnLoadRequest(const CefMsg_LoadRequest_Params& params) {
-  DCHECK(frame_);
-
-  blink::WebURLRequest request;
-  CefRequestImpl::Get(params, request);
-
-  blink_glue::StartNavigation(frame_, request);
-}
-
 // Enable deprecation warnings on Windows. See http://crbug.com/585142.
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #if defined(__clang__)
 #pragma GCC diagnostic pop
 #else

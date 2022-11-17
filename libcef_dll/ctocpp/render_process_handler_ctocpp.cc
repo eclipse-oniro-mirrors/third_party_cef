@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=4cc516704229f90c49852b46f932b8882b4bf8d4$
+// $hash=a75829d0f47e772086a586f213cfdfe54ff5554c$
 //
 
 #include "libcef_dll/ctocpp/render_process_handler_ctocpp.h"
@@ -51,10 +51,7 @@ void CefRenderProcessHandlerCToCpp::OnBrowserCreated(
   DCHECK(browser.get());
   if (!browser.get())
     return;
-  // Verify param: extra_info; type: refptr_diff
-  DCHECK(extra_info.get());
-  if (!extra_info.get())
-    return;
+  // Unverified params: extra_info
 
   // Execute
   _struct->on_browser_created(_struct, CefBrowserCppToC::Wrap(browser),

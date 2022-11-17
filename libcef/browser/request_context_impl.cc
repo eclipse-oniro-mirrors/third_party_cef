@@ -16,10 +16,11 @@
 #include "chrome/browser/profiles/profile.h"
 #include "components/prefs/pref_service.h"
 #include "content/public/browser/browser_task_traits.h"
-#include "content/public/browser/plugin_service.h"
 #include "content/public/browser/ssl_host_state_delegate.h"
+#include "content/public/common/child_process_host.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
+#include "net/dns/host_resolver.h"
 #include "services/network/public/cpp/resolve_host_client_base.h"
 #include "services/network/public/mojom/network_context.mojom.h"
 
@@ -47,54 +48,29 @@ const char* GetTypeString(base::Value::Type type) {
       return "DICTIONARY";
     case base::Value::Type::LIST:
       return "LIST";
-    case base::Value::Type::DEAD:
-      return "DEAD";
   }
 
   NOTREACHED();
   return "UNKNOWN";
 }
 
-// Helper for HostResolver::Resolve.
-struct ResolveHostHelperOld {
-  explicit ResolveHostHelperOld(CefRefPtr<CefResolveCallback> callback)
-      : callback_(callback) {}
-
-  void OnResolveCompleted(int result) {
-    std::vector<CefString> resolved_ips;
-    base::Optional<net::AddressList> maybe_address_list =
-        request_->GetAddressResults();
-    if (maybe_address_list) {
-      net::AddressList::const_iterator iter = maybe_address_list->begin();
-      for (; iter != maybe_address_list->end(); ++iter)
-        resolved_ips.push_back(iter->ToStringWithoutPort());
-    }
-    CEF_POST_TASK(
-        CEF_UIT,
-        base::Bind(&CefResolveCallback::OnResolveCompleted, callback_,
-                   static_cast<cef_errorcode_t>(result), resolved_ips));
-
-    delete this;
-  }
-
-  CefRefPtr<CefResolveCallback> callback_;
-  std::unique_ptr<net::HostResolver::ResolveHostRequest> request_;
-};
-
 class ResolveHostHelper : public network::ResolveHostClientBase {
  public:
   explicit ResolveHostHelper(CefRefPtr<CefResolveCallback> callback)
       : callback_(callback), receiver_(this) {}
 
+  ResolveHostHelper(const ResolveHostHelper&) = delete;
+  ResolveHostHelper& operator=(const ResolveHostHelper&) = delete;
+
   void Start(CefBrowserContext* browser_context, const CefString& origin) {
     CEF_REQUIRE_UIT();
 
     browser_context->GetNetworkContext()->CreateHostResolver(
-        base::nullopt, host_resolver_.BindNewPipeAndPassReceiver());
+        absl::nullopt, host_resolver_.BindNewPipeAndPassReceiver());
 
     host_resolver_.set_disconnect_handler(base::BindOnce(
         &ResolveHostHelper::OnComplete, base::Unretained(this), net::ERR_FAILED,
-        net::ResolveErrorInfo(net::ERR_FAILED), base::nullopt));
+        net::ResolveErrorInfo(net::ERR_FAILED), absl::nullopt));
 
     host_resolver_->ResolveHost(
         net::HostPortPair::FromURL(GURL(origin.ToString())),
@@ -106,7 +82,7 @@ class ResolveHostHelper : public network::ResolveHostClientBase {
   void OnComplete(
       int32_t result,
       const ::net::ResolveErrorInfo& resolve_error_info,
-      const base::Optional<net::AddressList>& resolved_addresses) override {
+      const absl::optional<net::AddressList>& resolved_addresses) override {
     CEF_REQUIRE_UIT();
 
     host_resolver_.reset();
@@ -130,8 +106,6 @@ class ResolveHostHelper : public network::ResolveHostClientBase {
 
   mojo::Remote<network::mojom::HostResolver> host_resolver_;
   mojo::Receiver<network::mojom::ResolveHostClient> receiver_;
-
-  DISALLOW_COPY_AND_ASSIGN(ResolveHostHelper);
 };
 
 }  // namespace
@@ -399,13 +373,6 @@ bool CefRequestContextImpl::ClearSchemeHandlerFactories() {
   return true;
 }
 
-void CefRequestContextImpl::PurgePluginListCache(bool reload_pages) {
-  GetBrowserContext(
-      content::GetUIThreadTaskRunner({}),
-      base::BindOnce(&CefRequestContextImpl::PurgePluginListCacheInternal, this,
-                     reload_pages));
-}
-
 bool CefRequestContextImpl::HasPreference(const CefString& name) {
   if (!VerifyBrowserContext())
     return false;
@@ -423,7 +390,7 @@ CefRefPtr<CefValue> CefRequestContextImpl::GetPreference(
   const PrefService::Preference* pref = pref_service->FindPreference(name);
   if (!pref)
     return nullptr;
-  return new CefValueImpl(pref->GetValue()->DeepCopy());
+  return new CefValueImpl(pref->GetValue()->CreateDeepCopy().release());
 }
 
 CefRefPtr<CefDictionaryValue> CefRequestContextImpl::GetAllPreferences(
@@ -591,24 +558,20 @@ CefRefPtr<CefMediaRouter> CefRequestContextImpl::GetMediaRouter(
   return media_router.get();
 }
 
-void CefRequestContextImpl::OnRenderFrameCreated(int render_process_id,
-                                                 int render_frame_id,
-                                                 int frame_tree_node_id,
-                                                 bool is_main_frame,
-                                                 bool is_guest_view) {
-  browser_context_->OnRenderFrameCreated(this, render_process_id,
-                                         render_frame_id, frame_tree_node_id,
-                                         is_main_frame, is_guest_view);
+void CefRequestContextImpl::OnRenderFrameCreated(
+    const content::GlobalRenderFrameHostId& global_id,
+    bool is_main_frame,
+    bool is_guest_view) {
+  browser_context_->OnRenderFrameCreated(this, global_id, is_main_frame,
+                                         is_guest_view);
 }
 
-void CefRequestContextImpl::OnRenderFrameDeleted(int render_process_id,
-                                                 int render_frame_id,
-                                                 int frame_tree_node_id,
-                                                 bool is_main_frame,
-                                                 bool is_guest_view) {
-  browser_context_->OnRenderFrameDeleted(this, render_process_id,
-                                         render_frame_id, frame_tree_node_id,
-                                         is_main_frame, is_guest_view);
+void CefRequestContextImpl::OnRenderFrameDeleted(
+    const content::GlobalRenderFrameHostId& global_id,
+    bool is_main_frame,
+    bool is_guest_view) {
+  browser_context_->OnRenderFrameDeleted(this, global_id, is_main_frame,
+                                         is_guest_view);
 }
 
 // static
@@ -709,18 +672,6 @@ void CefRequestContextImpl::EnsureBrowserContext() {
   DCHECK(browser_context());
 }
 
-void CefRequestContextImpl::PurgePluginListCacheInternal(
-    bool reload_pages,
-    CefBrowserContext::Getter browser_context_getter) {
-  auto browser_context = browser_context_getter.Run();
-  if (!browser_context)
-    return;
-
-  browser_context->ClearPluginLoadDecision(-1);
-  content::PluginService::GetInstance()->PurgePluginListCache(
-      browser_context->AsBrowserContext(), false);
-}
-
 void CefRequestContextImpl::ClearCertificateExceptionsInternal(
     CefRefPtr<CefCompletionCallback> callback,
     CefBrowserContext::Getter browser_context_getter) {
@@ -731,11 +682,11 @@ void CefRequestContextImpl::ClearCertificateExceptionsInternal(
   content::SSLHostStateDelegate* ssl_delegate =
       browser_context->AsBrowserContext()->GetSSLHostStateDelegate();
   if (ssl_delegate)
-    ssl_delegate->Clear(base::Callback<bool(const std::string&)>());
+    ssl_delegate->Clear(base::NullCallback());
 
   if (callback) {
     CEF_POST_TASK(CEF_UIT,
-                  base::Bind(&CefCompletionCallback::OnComplete, callback));
+                  base::BindOnce(&CefCompletionCallback::OnComplete, callback));
   }
 }
 
@@ -748,7 +699,7 @@ void CefRequestContextImpl::ClearHttpAuthCredentialsInternal(
 
   browser_context->GetNetworkContext()->ClearHttpAuthCache(
       /*start_time=*/base::Time(), /*end_time=*/base::Time::Max(),
-      base::Bind(&CefCompletionCallback::OnComplete, callback));
+      base::BindOnce(&CefCompletionCallback::OnComplete, callback));
 }
 
 void CefRequestContextImpl::CloseAllConnectionsInternal(
@@ -759,7 +710,7 @@ void CefRequestContextImpl::CloseAllConnectionsInternal(
     return;
 
   browser_context->GetNetworkContext()->CloseAllConnections(
-      base::Bind(&CefCompletionCallback::OnComplete, callback));
+      base::BindOnce(&CefCompletionCallback::OnComplete, callback));
 }
 
 void CefRequestContextImpl::ResolveHostInternal(

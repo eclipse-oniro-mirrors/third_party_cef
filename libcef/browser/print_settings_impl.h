@@ -18,6 +18,9 @@ class CefPrintSettingsImpl
   CefPrintSettingsImpl(std::unique_ptr<printing::PrintSettings> settings,
                        bool read_only);
 
+  CefPrintSettingsImpl(const CefPrintSettingsImpl&) = delete;
+  CefPrintSettingsImpl& operator=(const CefPrintSettingsImpl&) = delete;
+
   // CefPrintSettings methods.
   bool IsValid() override;
   bool IsReadOnly() override;
@@ -45,11 +48,6 @@ class CefPrintSettingsImpl
   DuplexMode GetDuplexMode() override;
 
   std::unique_ptr<printing::PrintSettings> TakeOwnership() WARN_UNUSED_RESULT;
-
- private:
-  std::unique_ptr<printing::PrintSettings> settings_;
-
-  DISALLOW_COPY_AND_ASSIGN(CefPrintSettingsImpl);
 };
 
 #endif  // CEF_LIBCEF_BROWSER_PRINT_SETTINGS_IMPL_H_

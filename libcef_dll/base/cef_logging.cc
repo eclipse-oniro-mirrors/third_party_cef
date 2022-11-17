@@ -15,6 +15,7 @@
 #include <string.h>
 #endif
 
+#include "include/base/cef_cxx17_backports.h"
 #include "include/internal/cef_string_types.h"
 
 namespace cef {
@@ -190,7 +191,7 @@ LogMessage::~LogMessage() {
 // This has already been defined in the header, but defining it again as DWORD
 // ensures that the type used in the header is equivalent to DWORD. If not,
 // the redefinition is a compile error.
-typedef DWORD SystemErrorCode;
+using SystemErrorCode = DWORD;
 #endif
 
 SystemErrorCode GetLastSystemErrorCode() {
@@ -209,7 +210,7 @@ std::string SystemErrorCodeToString(SystemErrorCode error_code) {
   char msgbuf[error_message_buffer_size];
   DWORD flags = FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS;
   DWORD len = FormatMessageA(flags, NULL, error_code, 0, msgbuf,
-                             arraysize(msgbuf), NULL);
+                             static_cast<DWORD>(base::size(msgbuf)), NULL);
   std::stringstream ss;
   if (len) {
     std::string s(msgbuf);

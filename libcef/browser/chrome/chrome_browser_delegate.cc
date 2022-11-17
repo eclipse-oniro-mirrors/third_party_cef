@@ -13,10 +13,12 @@
 #include "libcef/browser/chrome/chrome_browser_host_impl.h"
 #include "libcef/browser/request_context_impl.h"
 #include "libcef/common/app_manager.h"
+#include "libcef/common/frame_util.h"
 
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_tabstrip.h"
+#include "content/public/browser/global_routing_id.h"
 #include "content/public/browser/keyboard_event_processing_result.h"
 #include "content/public/browser/native_web_keyboard_event.h"
 
@@ -83,8 +85,10 @@ void ChromeBrowserDelegate::WebContentsCreated(
   CefRefPtr<CefDictionaryValue> extra_info;
 
   CefBrowserInfoManager::GetInstance()->WebContentsCreated(
-      target_url, opener_render_process_id, opener_render_frame_id, settings,
-      client, platform_delegate, extra_info);
+      target_url,
+      frame_util::MakeGlobalId(opener_render_process_id,
+                               opener_render_frame_id),
+      settings, client, platform_delegate, extra_info);
 
   auto opener = ChromeBrowserHostImpl::GetBrowserForContents(source_contents);
   if (!opener) {
@@ -131,6 +135,14 @@ void ChromeBrowserDelegate::AddNewContents(
 content::WebContents* ChromeBrowserDelegate::OpenURLFromTab(
     content::WebContents* source,
     const content::OpenURLParams& params) {
+  // |source| may be nullptr when opening a link from chrome UI such as the
+  // Reading List sidebar. In that case we default to using the Browser's
+  // currently active WebContents.
+  if (!source) {
+    source = browser_->tab_strip_model()->GetActiveWebContents();
+    DCHECK(source);
+  }
+
   // Return nullptr to cancel the navigation. Otherwise, proceed with default
   // chrome handling.
   if (auto delegate = GetDelegateForWebContents(source)) {
@@ -140,9 +152,9 @@ content::WebContents* ChromeBrowserDelegate::OpenURLFromTab(
 }
 
 void ChromeBrowserDelegate::LoadingStateChanged(content::WebContents* source,
-                                                bool to_different_document) {
+                                                bool should_show_loading_ui) {
   if (auto delegate = GetDelegateForWebContents(source)) {
-    delegate->LoadingStateChanged(source, to_different_document);
+    delegate->LoadingStateChanged(source, should_show_loading_ui);
   }
 }
 
@@ -166,10 +178,10 @@ bool ChromeBrowserDelegate::DidAddMessageToConsole(
   return false;
 }
 
-void ChromeBrowserDelegate::DidNavigateMainFramePostCommit(
+void ChromeBrowserDelegate::DidNavigatePrimaryMainFramePostCommit(
     content::WebContents* web_contents) {
   if (auto delegate = GetDelegateForWebContents(web_contents)) {
-    delegate->DidNavigateMainFramePostCommit(web_contents);
+    delegate->DidNavigatePrimaryMainFramePostCommit(web_contents);
   }
 }
 

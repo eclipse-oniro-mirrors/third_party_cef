@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=771c124f112f02314f57b5f9bd475afe6cef3242$
+// $hash=2db5977714e59976ae9617a49a65cadb72623ebd$
 //
 
 #ifndef CEF_LIBCEF_DLL_CTOCPP_REQUEST_HANDLER_CTOCPP_H_
@@ -64,12 +64,12 @@ class CefRequestHandlerCToCpp
   bool OnQuotaRequest(CefRefPtr<CefBrowser> browser,
                       const CefString& origin_url,
                       int64 new_size,
-                      CefRefPtr<CefRequestCallback> callback) override;
+                      CefRefPtr<CefCallback> callback) override;
   bool OnCertificateError(CefRefPtr<CefBrowser> browser,
                           cef_errorcode_t cert_error,
                           const CefString& request_url,
                           CefRefPtr<CefSSLInfo> ssl_info,
-                          CefRefPtr<CefRequestCallback> callback) override;
+                          CefRefPtr<CefCallback> callback) override;
   bool OnSelectClientCertificate(
       CefRefPtr<CefBrowser> browser,
       bool isProxy,

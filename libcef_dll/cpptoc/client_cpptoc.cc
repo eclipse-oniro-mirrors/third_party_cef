@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=bdbe1ed03a5ab0ca22668417c329555a3b0d9cea$
+// $hash=5c9e95dca457958e3b49c85b9fd39b36bf555d4e$
 //
 
 #include "libcef_dll/cpptoc/client_cpptoc.h"
@@ -21,6 +21,7 @@
 #include "libcef_dll/cpptoc/drag_handler_cpptoc.h"
 #include "libcef_dll/cpptoc/find_handler_cpptoc.h"
 #include "libcef_dll/cpptoc/focus_handler_cpptoc.h"
+#include "libcef_dll/cpptoc/frame_handler_cpptoc.h"
 #include "libcef_dll/cpptoc/jsdialog_handler_cpptoc.h"
 #include "libcef_dll/cpptoc/keyboard_handler_cpptoc.h"
 #include "libcef_dll/cpptoc/life_span_handler_cpptoc.h"
@@ -162,6 +163,22 @@ client_get_focus_handler(struct _cef_client_t* self) {
 
   // Return type: refptr_same
   return CefFocusHandlerCppToC::Wrap(_retval);
+}
+
+struct _cef_frame_handler_t* CEF_CALLBACK
+client_get_frame_handler(struct _cef_client_t* self) {
+  // AUTO-GENERATED CONTENT - DELETE THIS COMMENT BEFORE MODIFYING
+
+  DCHECK(self);
+  if (!self)
+    return NULL;
+
+  // Execute
+  CefRefPtr<CefFrameHandler> _retval =
+      CefClientCppToC::Get(self)->GetFrameHandler();
+
+  // Return type: refptr_same
+  return CefFrameHandlerCppToC::Wrap(_retval);
 }
 
 struct _cef_jsdialog_handler_t* CEF_CALLBACK
@@ -322,6 +339,7 @@ CefClientCppToC::CefClientCppToC() {
   GetStruct()->get_drag_handler = client_get_drag_handler;
   GetStruct()->get_find_handler = client_get_find_handler;
   GetStruct()->get_focus_handler = client_get_focus_handler;
+  GetStruct()->get_frame_handler = client_get_frame_handler;
   GetStruct()->get_jsdialog_handler = client_get_jsdialog_handler;
   GetStruct()->get_keyboard_handler = client_get_keyboard_handler;
   GetStruct()->get_life_span_handler = client_get_life_span_handler;

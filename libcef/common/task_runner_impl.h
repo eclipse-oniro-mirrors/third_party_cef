@@ -8,12 +8,15 @@
 
 #include "include/cef_task.h"
 
-#include "base/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 
 class CefTaskRunnerImpl : public CefTaskRunner {
  public:
   explicit CefTaskRunnerImpl(
       scoped_refptr<base::SingleThreadTaskRunner> task_runner);
+
+  CefTaskRunnerImpl(const CefTaskRunnerImpl&) = delete;
+  CefTaskRunnerImpl& operator=(const CefTaskRunnerImpl&) = delete;
 
   // Returns the task runner associated with |threadId|.
   static scoped_refptr<base::SingleThreadTaskRunner> GetTaskRunner(
@@ -32,7 +35,6 @@ class CefTaskRunnerImpl : public CefTaskRunner {
   scoped_refptr<base::SingleThreadTaskRunner> task_runner_;
 
   IMPLEMENT_REFCOUNTING(CefTaskRunnerImpl);
-  DISALLOW_COPY_AND_ASSIGN(CefTaskRunnerImpl);
 };
 
 #endif  // CEF_LIBCEF_COMMON_TASK_RUNNER_IMPL_H_

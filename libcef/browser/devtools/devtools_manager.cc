@@ -22,6 +22,10 @@ class CefDevToolsRegistrationImpl : public CefRegistration,
     DCHECK(observer_);
   }
 
+  CefDevToolsRegistrationImpl(const CefDevToolsRegistrationImpl&) = delete;
+  CefDevToolsRegistrationImpl& operator=(const CefDevToolsRegistrationImpl&) =
+      delete;
+
   ~CefDevToolsRegistrationImpl() override {
     CEF_REQUIRE_UIT();
 
@@ -62,7 +66,7 @@ class CefDevToolsRegistrationImpl : public CefRegistration,
   void OnDevToolsEvent(const base::StringPiece& method,
                        const base::StringPiece& params) override {
     CEF_REQUIRE_UIT();
-    observer_->OnDevToolsEvent(browser_, method.as_string(), params.data(),
+    observer_->OnDevToolsEvent(browser_, std::string(method), params.data(),
                                params.size());
   }
 
@@ -88,7 +92,6 @@ class CefDevToolsRegistrationImpl : public CefRegistration,
   base::WeakPtr<CefDevToolsController> controller_;
 
   IMPLEMENT_REFCOUNTING_DELETE_ON_UIT(CefDevToolsRegistrationImpl);
-  DISALLOW_COPY_AND_ASSIGN(CefDevToolsRegistrationImpl);
 };
 
 }  // namespace
