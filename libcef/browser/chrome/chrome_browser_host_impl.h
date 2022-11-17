@@ -44,13 +44,9 @@ class ChromeBrowserHostImpl : public CefBrowserHostBase {
   // Returns the browser associated with the specified WebContents.
   static CefRefPtr<ChromeBrowserHostImpl> GetBrowserForContents(
       const content::WebContents* contents);
-  // Returns the browser associated with the specified FrameTreeNode ID.
-  static CefRefPtr<ChromeBrowserHostImpl> GetBrowserForFrameTreeNode(
-      int frame_tree_node_id);
-  // Returns the browser associated with the specified frame routing IDs.
-  static CefRefPtr<ChromeBrowserHostImpl> GetBrowserForFrameRoute(
-      int render_process_id,
-      int render_routing_id);
+  // Returns the browser associated with the specified global ID.
+  static CefRefPtr<ChromeBrowserHostImpl> GetBrowserForGlobalId(
+      const content::GlobalRenderFrameHostId& global_id);
 
   ~ChromeBrowserHostImpl() override;
 
@@ -78,8 +74,7 @@ class ChromeBrowserHostImpl : public CefBrowserHostBase {
   void PrintToPDF(const CefString& path,
                   const CefPdfPrintSettings& settings,
                   CefRefPtr<CefPdfPrintCallback> callback) override;
-  void Find(int identifier,
-            const CefString& searchText,
+  void Find(const CefString& searchText,
             bool forward,
             bool matchCase,
             bool findNext) override;
@@ -97,7 +92,6 @@ class ChromeBrowserHostImpl : public CefBrowserHostBase {
   void Invalidate(PaintElementType type) override;
   void SendExternalBeginFrame() override;
   void SendTouchEvent(const CefTouchEvent& event) override;
-  void SendFocusEvent(bool setFocus) override;
   void SendCaptureLostEvent() override;
   void NotifyMoveOrResizeStarted() override;
   int GetWindowlessFrameRate() override;

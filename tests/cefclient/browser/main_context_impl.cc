@@ -4,8 +4,9 @@
 
 #include "tests/cefclient/browser/main_context_impl.h"
 
+#include <algorithm>
+
 #include "include/cef_parser.h"
-#include "include/cef_web_plugin.h"
 #include "tests/shared/browser/client_app_browser.h"
 #include "tests/shared/common/client_switches.h"
 
@@ -141,16 +142,6 @@ MainContextImpl::MainContextImpl(CefRefPtr<CefCommandLine> command_line,
   // |browser_background_color_| should remain 0 to enable transparent painting.
   if (!use_transparent_painting) {
     browser_background_color_ = background_color_;
-  }
-
-  const std::string& cdm_path =
-      command_line_->GetSwitchValue(switches::kWidevineCdmPath);
-  if (!cdm_path.empty()) {
-    // Register the Widevine CDM at the specified path. See comments in
-    // cef_web_plugin.h for details. It's safe to call this method before
-    // CefInitialize(), and calling it before CefInitialize() is required on
-    // Linux.
-    CefRegisterWidevineCdm(cdm_path, nullptr);
   }
 }
 

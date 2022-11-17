@@ -6,6 +6,7 @@
 #ifndef CEF_LIBCEF_BROWSER_EXTENSIONS_EXTENSIONS_API_CLIENT_H_
 #define CEF_LIBCEF_BROWSER_EXTENSIONS_EXTENSIONS_API_CLIENT_H_
 
+#include "components/value_store/value_store_factory.h"
 #include "extensions/browser/api/extensions_api_client.h"
 
 namespace extensions {
@@ -24,6 +25,7 @@ class CefExtensionsAPIClient : public ExtensionsAPIClient {
       MimeHandlerViewGuest* guest) const override;
   void AttachWebContentsHelpers(
       content::WebContents* web_contents) const override;
+  FileSystemDelegate* GetFileSystemDelegate() override;
 
   // Storage API support.
 
@@ -31,11 +33,14 @@ class CefExtensionsAPIClient : public ExtensionsAPIClient {
   // to |caches|. By default adds nothing.
   void AddAdditionalValueStoreCaches(
       content::BrowserContext* context,
-      const scoped_refptr<ValueStoreFactory>& factory,
+      const scoped_refptr<value_store::ValueStoreFactory>& factory,
       const scoped_refptr<base::ObserverListThreadSafe<SettingsObserver>>&
           observers,
       std::map<settings_namespace::Namespace, ValueStoreCache*>* caches)
       override;
+
+ private:
+  std::unique_ptr<FileSystemDelegate> file_system_delegate_;
 };
 
 }  // namespace extensions

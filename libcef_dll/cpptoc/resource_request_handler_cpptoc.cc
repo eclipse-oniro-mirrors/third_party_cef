@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=1009f2ed21a03d2a6e47372def61b0696055d4e1$
+// $hash=57f1a169f2b2efb6ff3f1ca71aa390fb1d82ed2d$
 //
 
 #include "libcef_dll/cpptoc/resource_request_handler_cpptoc.h"
@@ -17,8 +17,8 @@
 #include "libcef_dll/cpptoc/resource_handler_cpptoc.h"
 #include "libcef_dll/cpptoc/response_filter_cpptoc.h"
 #include "libcef_dll/ctocpp/browser_ctocpp.h"
+#include "libcef_dll/ctocpp/callback_ctocpp.h"
 #include "libcef_dll/ctocpp/frame_ctocpp.h"
-#include "libcef_dll/ctocpp/request_callback_ctocpp.h"
 #include "libcef_dll/ctocpp/request_ctocpp.h"
 #include "libcef_dll/ctocpp/response_ctocpp.h"
 
@@ -59,7 +59,7 @@ resource_request_handler_on_before_resource_load(
     cef_browser_t* browser,
     cef_frame_t* frame,
     cef_request_t* request,
-    cef_request_callback_t* callback) {
+    cef_callback_t* callback) {
   // AUTO-GENERATED CONTENT - DELETE THIS COMMENT BEFORE MODIFYING
 
   DCHECK(self);
@@ -79,8 +79,7 @@ resource_request_handler_on_before_resource_load(
   cef_return_value_t _retval =
       CefResourceRequestHandlerCppToC::Get(self)->OnBeforeResourceLoad(
           CefBrowserCToCpp::Wrap(browser), CefFrameCToCpp::Wrap(frame),
-          CefRequestCToCpp::Wrap(request),
-          CefRequestCallbackCToCpp::Wrap(callback));
+          CefRequestCToCpp::Wrap(request), CefCallbackCToCpp::Wrap(callback));
 
   // Return type: simple
   return _retval;

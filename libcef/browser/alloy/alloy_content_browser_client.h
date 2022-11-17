@@ -12,7 +12,6 @@
 #include "include/cef_request_context_handler.h"
 #include "libcef/browser/request_context_impl.h"
 
-#include "base/macros.h"
 #include "base/memory/ref_counted.h"
 #include "build/build_config.h"
 #include "content/public/browser/content_browser_client.h"
@@ -22,7 +21,6 @@ class AlloyBrowserMainParts;
 class CefDevToolsDelegate;
 
 namespace content {
-class PluginServiceFilter;
 class SiteInstance;
 }  // namespace content
 
@@ -37,12 +35,20 @@ class AlloyContentBrowserClient : public content::ContentBrowserClient {
 
   // ContentBrowserClient implementation.
   std::unique_ptr<content::BrowserMainParts> CreateBrowserMainParts(
-      const content::MainFunctionParams& parameters) override;
+      content::MainFunctionParams parameters) override;
   void RenderProcessWillLaunch(content::RenderProcessHost* host) override;
   bool ShouldUseProcessPerSite(content::BrowserContext* browser_context,
-                               const GURL& effective_url) override;
+                               const GURL& site_url) override;
+  bool ShouldUseSpareRenderProcessHost(content::BrowserContext* browser_context,
+                                       const GURL& site_url) override;
   bool DoesSiteRequireDedicatedProcess(content::BrowserContext* browser_context,
                                        const GURL& effective_site_url) override;
+  bool ShouldTreatURLSchemeAsFirstPartyWhenTopLevel(
+      base::StringPiece scheme,
+      bool is_embedded_origin_secure) override;
+  bool ShouldIgnoreSameSiteCookieRestrictionsWhenTopLevel(
+      base::StringPiece scheme,
+      bool is_embedded_origin_secure) override;
   void OverrideURLLoaderFactoryParams(
       content::BrowserContext* browser_context,
       const url::Origin& origin,
@@ -111,6 +117,9 @@ class AlloyContentBrowserClient : public content::ContentBrowserClient {
   void DidCreatePpapiPlugin(content::BrowserPpapiHost* browser_host) override;
   std::unique_ptr<content::DevToolsManagerDelegate>
   CreateDevToolsManagerDelegate() override;
+  void RegisterAssociatedInterfaceBindersForRenderFrameHost(
+      content::RenderFrameHost& render_frame_host,
+      blink::AssociatedInterfaceRegistry& associated_registry) override;
   std::vector<std::unique_ptr<content::NavigationThrottle>>
   CreateThrottlesForNavigation(
       content::NavigationHandle* navigation_handle) override;
@@ -121,8 +130,14 @@ class AlloyContentBrowserClient : public content::ContentBrowserClient {
       const base::RepeatingCallback<content::WebContents*()>& wc_getter,
       content::NavigationUIData* navigation_ui_data,
       int frame_tree_node_id) override;
+  std::vector<std::unique_ptr<content::URLLoaderRequestInterceptor>>
+  WillCreateURLLoaderRequestInterceptors(
+      content::NavigationUIData* navigation_ui_data,
+      int frame_tree_node_id,
+      const scoped_refptr<network::SharedURLLoaderFactory>&
+          network_loader_factory) override;
 
-#if defined(OS_LINUX)
+#if BUILDFLAG(IS_LINUX)
   void GetAdditionalMappedFilesForChildProcess(
       const base::CommandLine& command_line,
       int child_process_id,
@@ -151,6 +166,7 @@ class AlloyContentBrowserClient : public content::ContentBrowserClient {
   void RegisterNonNetworkSubresourceURLLoaderFactories(
       int render_process_id,
       int render_frame_id,
+      const absl::optional<url::Origin>& request_initiator_origin,
       NonNetworkURLLoaderFactoryMap* factories) override;
   bool WillCreateURLLoaderFactory(
       content::BrowserContext* browser_context,
@@ -158,7 +174,7 @@ class AlloyContentBrowserClient : public content::ContentBrowserClient {
       int render_process_id,
       URLLoaderFactoryType type,
       const url::Origin& request_initiator,
-      base::Optional<int64_t> navigation_id,
+      absl::optional<int64_t> navigation_id,
       ukm::SourceIdObj ukm_source_id,
       mojo::PendingReceiver<network::mojom::URLLoaderFactory>* factory_receiver,
       mojo::PendingRemote<network::mojom::TrustedURLLoaderHeaderClient>*
@@ -168,7 +184,7 @@ class AlloyContentBrowserClient : public content::ContentBrowserClient {
       network::mojom::URLLoaderFactoryOverridePtr* factory_override) override;
   void OnNetworkServiceCreated(
       network::mojom::NetworkService* network_service) override;
-  void ConfigureNetworkContextParams(
+  bool ConfigureNetworkContextParams(
       content::BrowserContext* context,
       bool in_memory,
       const base::FilePath& relative_partition_path,
@@ -178,21 +194,26 @@ class AlloyContentBrowserClient : public content::ContentBrowserClient {
   std::vector<base::FilePath> GetNetworkContextsParentDirectory() override;
   bool HandleExternalProtocol(
       const GURL& url,
-      content::WebContents::OnceGetter web_contents_getter,
+      content::WebContents::Getter web_contents_getter,
       int child_id,
       int frame_tree_node_id,
       content::NavigationUIData* navigation_data,
       bool is_main_frame,
+      network::mojom::WebSandboxFlags sandbox_flags,
       ui::PageTransition page_transition,
       bool has_user_gesture,
-      const base::Optional<url::Origin>& initiating_origin,
+      const absl::optional<url::Origin>& initiating_origin,
+      content::RenderFrameHost* initiator_document,
       mojo::PendingRemote<network::mojom::URLLoaderFactory>* out_factory)
       override;
   bool HandleExternalProtocol(
       content::WebContents::Getter web_contents_getter,
       int frame_tree_node_id,
       content::NavigationUIData* navigation_data,
+      network::mojom::WebSandboxFlags sandbox_flags,
       const network::ResourceRequest& request,
+      const absl::optional<url::Origin>& initiating_origin,
+      content::RenderFrameHost* initiator_document,
       mojo::PendingRemote<network::mojom::URLLoaderFactory>* out_factory)
       override;
   std::unique_ptr<content::OverlayWindow> CreateWindowForPictureInPicture(
@@ -204,17 +225,20 @@ class AlloyContentBrowserClient : public content::ContentBrowserClient {
   std::string GetProduct() override;
   std::string GetChromeProduct() override;
   std::string GetUserAgent() override;
+  std::string GetReducedUserAgent() override;
   blink::UserAgentMetadata GetUserAgentMetadata() override;
   base::flat_set<std::string> GetPluginMimeTypesWithExternalHandlers(
       content::BrowserContext* browser_context) override;
   bool ArePersistentMediaDeviceIDsAllowed(
       content::BrowserContext* browser_context,
       const GURL& scope,
-      const GURL& site_for_cookies,
-      const base::Optional<url::Origin>& top_frame_origin) override;
+      const net::SiteForCookies& site_for_cookies,
+      const absl::optional<url::Origin>& top_frame_origin) override;
   bool ShouldAllowPluginCreation(
       const url::Origin& embedder_origin,
       const content::PepperPluginInfo& plugin_info) override;
+  void OnWebContentsCreated(content::WebContents* web_contents) override;
+  bool IsFindInPageDisabledForOrigin(const url::Origin& origin) override;
 
   CefRefPtr<CefRequestContextImpl> request_context() const;
   CefDevToolsDelegate* devtools_delegate() const;
@@ -229,8 +253,6 @@ class AlloyContentBrowserClient : public content::ContentBrowserClient {
       content::SiteInstance* site_instance);
 
   AlloyBrowserMainParts* browser_main_parts_ = nullptr;
-
-  std::unique_ptr<content::PluginServiceFilter> plugin_service_filter_;
 };
 
 #endif  // CEF_LIBCEF_BROWSER_ALLOY_ALLOY_CONTENT_BROWSER_CLIENT_H_

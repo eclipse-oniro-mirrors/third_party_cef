@@ -7,7 +7,9 @@
 
 #include "libcef/browser/native/browser_platform_delegate_native_aura.h"
 
-#if defined(USE_X11)
+#include "ui/ozone/buildflags.h"
+
+#if BUILDFLAG(OZONE_PLATFORM_X11)
 class CefWindowX11;
 #endif
 
@@ -24,7 +26,7 @@ class CefBrowserPlatformDelegateNativeLinux
   void CloseHostWindow() override;
   CefWindowHandle GetHostWindowHandle() const override;
   views::Widget* GetWindowWidget() const override;
-  void SendFocusEvent(bool setFocus) override;
+  void SetFocus(bool setFocus) override;
   void NotifyMoveOrResizeStarted() override;
   void SizeTo(int width, int height) override;
   gfx::Point GetScreenPoint(const gfx::Point& view) const override;
@@ -50,7 +52,7 @@ class CefBrowserPlatformDelegateNativeLinux
   // associated root window is destroyed.
   views::Widget* window_widget_;
 
-#if defined(USE_X11)
+#if BUILDFLAG(OZONE_PLATFORM_X11)
   CefWindowX11* window_x11_ = nullptr;
 #endif
 };

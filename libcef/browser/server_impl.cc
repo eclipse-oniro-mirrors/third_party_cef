@@ -106,6 +106,9 @@ class AcceptWebSocketCallback : public CefCallback {
         connection_id_(connection_id),
         request_info_(request_info) {}
 
+  AcceptWebSocketCallback(const AcceptWebSocketCallback&) = delete;
+  AcceptWebSocketCallback& operator=(const AcceptWebSocketCallback&) = delete;
+
   ~AcceptWebSocketCallback() override {
     if (impl_)
       impl_->ContinueWebSocketRequest(connection_id_, request_info_, false);
@@ -141,7 +144,6 @@ class AcceptWebSocketCallback : public CefCallback {
   net::HttpServerRequestInfo request_info_;
 
   IMPLEMENT_REFCOUNTING_DELETE_ON_UIT(AcceptWebSocketCallback);
-  DISALLOW_COPY_AND_ASSIGN(AcceptWebSocketCallback);
 };
 
 }  // namespace
@@ -522,7 +524,7 @@ void CefServerImpl::StartOnUIThread(const std::string& address,
       new base::Thread(base::StringPrintf("%s:%d", address.c_str(), port)));
   base::Thread::Options options;
   options.message_pump_type = base::MessagePumpType::IO;
-  if (thread->StartWithOptions(options)) {
+  if (thread->StartWithOptions(std::move(options))) {
     // Add a reference that will be released in ShutdownOnUIThread().
     AddRef();
 

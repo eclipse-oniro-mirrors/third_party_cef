@@ -4,6 +4,7 @@
 
 #include "libcef/browser/menu_manager.h"
 
+#include <tuple>
 #include <utility>
 
 #include "libcef/browser/alloy/alloy_browser_host_impl.h"
@@ -35,21 +36,25 @@ const cef_event_flags_t kEmptyEventFlags = static_cast<cef_event_flags_t>(0);
 
 class CefRunContextMenuCallbackImpl : public CefRunContextMenuCallback {
  public:
-  typedef base::Callback<void(int, cef_event_flags_t)> Callback;
+  using Callback = base::OnceCallback<void(int, cef_event_flags_t)>;
 
-  explicit CefRunContextMenuCallbackImpl(const Callback& callback)
-      : callback_(callback) {}
+  explicit CefRunContextMenuCallbackImpl(Callback callback)
+      : callback_(std::move(callback)) {}
+
+  CefRunContextMenuCallbackImpl(const CefRunContextMenuCallbackImpl&) = delete;
+  CefRunContextMenuCallbackImpl& operator=(
+      const CefRunContextMenuCallbackImpl&) = delete;
 
   ~CefRunContextMenuCallbackImpl() {
     if (!callback_.is_null()) {
       // The callback is still pending. Cancel it now.
       if (CEF_CURRENTLY_ON_UIT()) {
-        RunNow(callback_, kInvalidCommandId, kEmptyEventFlags);
+        RunNow(std::move(callback_), kInvalidCommandId, kEmptyEventFlags);
       } else {
-        CEF_POST_TASK(
-            CEF_UIT,
-            base::Bind(&CefRunContextMenuCallbackImpl::RunNow, callback_,
-                       kInvalidCommandId, kEmptyEventFlags));
+        CEF_POST_TASK(CEF_UIT,
+                      base::BindOnce(&CefRunContextMenuCallbackImpl::RunNow,
+                                     std::move(callback_), kInvalidCommandId,
+                                     kEmptyEventFlags));
       }
     }
   }
@@ -57,13 +62,13 @@ class CefRunContextMenuCallbackImpl : public CefRunContextMenuCallback {
   void Continue(int command_id, cef_event_flags_t event_flags) override {
     if (CEF_CURRENTLY_ON_UIT()) {
       if (!callback_.is_null()) {
-        RunNow(callback_, command_id, event_flags);
+        RunNow(std::move(callback_), command_id, event_flags);
         callback_.Reset();
       }
     } else {
       CEF_POST_TASK(CEF_UIT,
-                    base::Bind(&CefRunContextMenuCallbackImpl::Continue, this,
-                               command_id, event_flags));
+                    base::BindOnce(&CefRunContextMenuCallbackImpl::Continue,
+                                   this, command_id, event_flags));
     }
   }
 
@@ -72,17 +77,16 @@ class CefRunContextMenuCallbackImpl : public CefRunContextMenuCallback {
   void Disconnect() { callback_.Reset(); }
 
  private:
-  static void RunNow(const Callback& callback,
+  static void RunNow(Callback callback,
                      int command_id,
                      cef_event_flags_t event_flags) {
     CEF_REQUIRE_UIT();
-    callback.Run(command_id, event_flags);
+    std::move(callback).Run(command_id, event_flags);
   }
 
   Callback callback_;
 
   IMPLEMENT_REFCOUNTING(CefRunContextMenuCallbackImpl);
-  DISALLOW_COPY_AND_ASSIGN(CefRunContextMenuCallbackImpl);
 };
 
 }  // namespace
@@ -154,8 +158,8 @@ bool CefMenuManager::CreateContextMenu(
       if (model_->GetCount() > 0) {
         CefRefPtr<CefRunContextMenuCallbackImpl> callbackImpl(
             new CefRunContextMenuCallbackImpl(
-                base::Bind(&CefMenuManager::ExecuteCommandCallback,
-                           weak_ptr_factory_.GetWeakPtr())));
+                base::BindOnce(&CefMenuManager::ExecuteCommandCallback,
+                               weak_ptr_factory_.GetWeakPtr())));
 
         // This reference will be cleared when the callback is executed or
         // the callback object is deleted.
@@ -173,7 +177,7 @@ bool CefMenuManager::CreateContextMenu(
       }
 
       // Do not keep references to the parameters in the callback.
-      paramsPtr->Detach(nullptr);
+      std::ignore = paramsPtr->Detach(nullptr);
       DCHECK(paramsPtr->HasOneRef());
       DCHECK(model_->VerifyRefCount());
 
@@ -215,7 +219,7 @@ void CefMenuManager::ExecuteCommand(CefRefPtr<CefMenuModelImpl> source,
           event_flags);
 
       // Do not keep references to the parameters in the callback.
-      paramsPtr->Detach(nullptr);
+      std::ignore = paramsPtr->Detach(nullptr);
       DCHECK(paramsPtr->HasOneRef());
 
       if (handled)

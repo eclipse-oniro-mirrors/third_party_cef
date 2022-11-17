@@ -26,6 +26,10 @@ class CefWebContentsViewOSR : public content::WebContentsView,
   explicit CefWebContentsViewOSR(SkColor background_color,
                                  bool use_shared_texture,
                                  bool use_external_begin_frame);
+
+  CefWebContentsViewOSR(const CefWebContentsViewOSR&) = delete;
+  CefWebContentsViewOSR& operator=(const CefWebContentsViewOSR&) = delete;
+
   ~CefWebContentsViewOSR() override;
 
   void WebContentsCreated(content::WebContents* web_contents);
@@ -55,8 +59,9 @@ class CefWebContentsViewOSR : public content::WebContentsView,
   void RenderViewHostChanged(content::RenderViewHost* old_host,
                              content::RenderViewHost* new_host) override;
   void SetOverscrollControllerEnabled(bool enabled) override;
+  void OnCapturerCountChanged() override;
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
   bool CloseTabAfterEventTrackingIfNeeded() override;
 #endif
 
@@ -83,8 +88,6 @@ class CefWebContentsViewOSR : public content::WebContentsView,
   const bool use_external_begin_frame_;
 
   content::WebContents* web_contents_;
-
-  DISALLOW_COPY_AND_ASSIGN(CefWebContentsViewOSR);
 };
 
 #endif  // CEF_LIBCEF_BROWSER_OSR_WEB_CONTENTS_VIEW_OSR_H_

@@ -1,9 +1,9 @@
 diff --git chrome/browser/printing/print_job_worker.cc chrome/browser/printing/print_job_worker.cc
-index 91edb6e296fd..bcb84f308df6 100644
+index c7a7f857a28d0..9479a7874ea3b 100644
 --- chrome/browser/printing/print_job_worker.cc
 +++ chrome/browser/printing/print_job_worker.cc
-@@ -135,6 +135,7 @@ PrintJobWorker::PrintJobWorker(int render_process_id, int render_frame_id)
-           PrintingContext::Create(printing_context_delegate_.get())),
+@@ -136,6 +136,7 @@ PrintJobWorker::PrintJobWorker(int render_process_id, int render_frame_id)
+                                   ShouldPrintingContextSkipSystemCalls())),
        thread_("Printing_Worker") {
    DCHECK_CURRENTLY_ON(content::BrowserThread::IO);
 +  printing_context_->set_render_ids(render_process_id, render_frame_id);
@@ -11,10 +11,10 @@ index 91edb6e296fd..bcb84f308df6 100644
  
  PrintJobWorker::~PrintJobWorker() {
 diff --git printing/printing_context.h printing/printing_context.h
-index 0a9bf2b3a6c1..7bc8b8b1d154 100644
+index 3f36303105b79..aea7f788504d6 100644
 --- printing/printing_context.h
 +++ printing/printing_context.h
-@@ -133,6 +133,13 @@ class PRINTING_EXPORT PrintingContext {
+@@ -172,6 +172,13 @@ class COMPONENT_EXPORT(PRINTING) PrintingContext {
  
    int job_id() const { return job_id_; }
  
@@ -28,14 +28,14 @@ index 0a9bf2b3a6c1..7bc8b8b1d154 100644
   protected:
    explicit PrintingContext(Delegate* delegate);
  
-@@ -156,6 +163,10 @@ class PRINTING_EXPORT PrintingContext {
- 
+@@ -216,6 +223,10 @@ class COMPONENT_EXPORT(PRINTING) PrintingContext {
    // The job id for the current job. The value is 0 if no jobs are active.
    int job_id_;
-+
+ 
 +  // Routing IDs for the frame that owns this object.
 +  int render_process_id_ = 0;
 +  int render_frame_id_ = 0;
- };
- 
- }  // namespace printing
++
+  private:
+ #if BUILDFLAG(ENABLE_OOP_PRINTING)
+   // If this instance of PrintingContext should skip making any system calls

@@ -94,9 +94,6 @@ const char kDisableScrollBounce[] = "disable-scroll-bounce";
 // Disable the PDF extension.
 const char kDisablePdfExtension[] = "disable-pdf-extension";
 
-// Path to Widevine CDM binaries.
-const char kWidevineCdmPath[] = "widevine-cdm-path";
-
 // Default plugin policy action.
 const char kPluginPolicy[] = "plugin-policy";
 // Allow the content. This is the default value.
@@ -134,7 +131,7 @@ const char kUserAgentProductAndVersion[] = "user-agent-product";
 const char kDisableRequestHandlingForTesting[] =
     "disable-request-handling-for-testing";
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
 // Path to the framework directory.
 const char kFrameworkDirPath[] = "framework-dir-path";
 const char kMainBundlePath[] = "main-bundle-path";

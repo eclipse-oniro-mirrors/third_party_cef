@@ -1,4 +1,4 @@
-# Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+# Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 # reserved. Use of this source code is governed by a BSD-style license that
 # can be found in the LICENSE file.
 #
@@ -8,7 +8,7 @@
 # by hand. See the translator.README.txt file in the tools directory for
 # more information.
 #
-# $hash=f1877c7a493342351e284cb6c14e6f223461facb$
+# $hash=872dedb7e5a2f36745446c3d0c9ad8bd5850adb7$
 #
 
 {
@@ -40,6 +40,8 @@
       'include/cef_find_handler.h',
       'include/cef_focus_handler.h',
       'include/cef_frame.h',
+      'include/cef_frame_handler.h',
+      'include/cef_i18n_util.h',
       'include/cef_image.h',
       'include/cef_jsdialog_handler.h',
       'include/cef_keyboard_handler.h',
@@ -60,7 +62,6 @@
       'include/cef_render_handler.h',
       'include/cef_render_process_handler.h',
       'include/cef_request.h',
-      'include/cef_request_callback.h',
       'include/cef_request_context.h',
       'include/cef_request_context_handler.h',
       'include/cef_request_handler.h',
@@ -100,6 +101,7 @@
       'include/views/cef_layout.h',
       'include/views/cef_menu_button.h',
       'include/views/cef_menu_button_delegate.h',
+      'include/views/cef_overlay_controller.h',
       'include/views/cef_panel.h',
       'include/views/cef_panel_delegate.h',
       'include/views/cef_scroll_view.h',
@@ -137,6 +139,8 @@
       'include/capi/cef_find_handler_capi.h',
       'include/capi/cef_focus_handler_capi.h',
       'include/capi/cef_frame_capi.h',
+      'include/capi/cef_frame_handler_capi.h',
+      'include/capi/cef_i18n_util_capi.h',
       'include/capi/cef_image_capi.h',
       'include/capi/cef_jsdialog_handler_capi.h',
       'include/capi/cef_keyboard_handler_capi.h',
@@ -157,7 +161,6 @@
       'include/capi/cef_render_handler_capi.h',
       'include/capi/cef_render_process_handler_capi.h',
       'include/capi/cef_request_capi.h',
-      'include/capi/cef_request_callback_capi.h',
       'include/capi/cef_request_context_capi.h',
       'include/capi/cef_request_context_handler_capi.h',
       'include/capi/cef_request_handler_capi.h',
@@ -197,6 +200,7 @@
       'include/capi/views/cef_layout_capi.h',
       'include/capi/views/cef_menu_button_capi.h',
       'include/capi/views/cef_menu_button_delegate_capi.h',
+      'include/capi/views/cef_overlay_controller_capi.h',
       'include/capi/views/cef_panel_capi.h',
       'include/capi/views/cef_panel_delegate_capi.h',
       'include/capi/views/cef_scroll_view_capi.h',
@@ -300,6 +304,8 @@
       'libcef_dll/ctocpp/focus_handler_ctocpp.h',
       'libcef_dll/cpptoc/frame_cpptoc.cc',
       'libcef_dll/cpptoc/frame_cpptoc.h',
+      'libcef_dll/ctocpp/frame_handler_ctocpp.cc',
+      'libcef_dll/ctocpp/frame_handler_ctocpp.h',
       'libcef_dll/cpptoc/get_extension_resource_callback_cpptoc.cc',
       'libcef_dll/cpptoc/get_extension_resource_callback_cpptoc.h',
       'libcef_dll/cpptoc/image_cpptoc.cc',
@@ -348,6 +354,8 @@
       'libcef_dll/cpptoc/navigation_entry_cpptoc.h',
       'libcef_dll/ctocpp/navigation_entry_visitor_ctocpp.cc',
       'libcef_dll/ctocpp/navigation_entry_visitor_ctocpp.h',
+      'libcef_dll/cpptoc/views/overlay_controller_cpptoc.cc',
+      'libcef_dll/cpptoc/views/overlay_controller_cpptoc.h',
       'libcef_dll/cpptoc/views/panel_cpptoc.cc',
       'libcef_dll/cpptoc/views/panel_cpptoc.h',
       'libcef_dll/ctocpp/views/panel_delegate_ctocpp.cc',
@@ -370,8 +378,6 @@
       'libcef_dll/cpptoc/process_message_cpptoc.h',
       'libcef_dll/ctocpp/read_handler_ctocpp.cc',
       'libcef_dll/ctocpp/read_handler_ctocpp.h',
-      'libcef_dll/ctocpp/register_cdm_callback_ctocpp.cc',
-      'libcef_dll/ctocpp/register_cdm_callback_ctocpp.h',
       'libcef_dll/cpptoc/registration_cpptoc.cc',
       'libcef_dll/cpptoc/registration_cpptoc.h',
       'libcef_dll/ctocpp/render_handler_ctocpp.cc',
@@ -380,8 +386,6 @@
       'libcef_dll/ctocpp/render_process_handler_ctocpp.h',
       'libcef_dll/cpptoc/request_cpptoc.cc',
       'libcef_dll/cpptoc/request_cpptoc.h',
-      'libcef_dll/cpptoc/request_callback_cpptoc.cc',
-      'libcef_dll/cpptoc/request_callback_cpptoc.h',
       'libcef_dll/cpptoc/request_context_cpptoc.cc',
       'libcef_dll/cpptoc/request_context_cpptoc.h',
       'libcef_dll/ctocpp/request_context_handler_ctocpp.cc',
@@ -610,6 +614,8 @@
       'libcef_dll/cpptoc/focus_handler_cpptoc.h',
       'libcef_dll/ctocpp/frame_ctocpp.cc',
       'libcef_dll/ctocpp/frame_ctocpp.h',
+      'libcef_dll/cpptoc/frame_handler_cpptoc.cc',
+      'libcef_dll/cpptoc/frame_handler_cpptoc.h',
       'libcef_dll/ctocpp/get_extension_resource_callback_ctocpp.cc',
       'libcef_dll/ctocpp/get_extension_resource_callback_ctocpp.h',
       'libcef_dll/ctocpp/image_ctocpp.cc',
@@ -658,6 +664,8 @@
       'libcef_dll/ctocpp/navigation_entry_ctocpp.h',
       'libcef_dll/cpptoc/navigation_entry_visitor_cpptoc.cc',
       'libcef_dll/cpptoc/navigation_entry_visitor_cpptoc.h',
+      'libcef_dll/ctocpp/views/overlay_controller_ctocpp.cc',
+      'libcef_dll/ctocpp/views/overlay_controller_ctocpp.h',
       'libcef_dll/ctocpp/views/panel_ctocpp.cc',
       'libcef_dll/ctocpp/views/panel_ctocpp.h',
       'libcef_dll/cpptoc/views/panel_delegate_cpptoc.cc',
@@ -680,8 +688,6 @@
       'libcef_dll/ctocpp/process_message_ctocpp.h',
       'libcef_dll/cpptoc/read_handler_cpptoc.cc',
       'libcef_dll/cpptoc/read_handler_cpptoc.h',
-      'libcef_dll/cpptoc/register_cdm_callback_cpptoc.cc',
-      'libcef_dll/cpptoc/register_cdm_callback_cpptoc.h',
       'libcef_dll/ctocpp/registration_ctocpp.cc',
       'libcef_dll/ctocpp/registration_ctocpp.h',
       'libcef_dll/cpptoc/render_handler_cpptoc.cc',
@@ -690,8 +696,6 @@
       'libcef_dll/cpptoc/render_process_handler_cpptoc.h',
       'libcef_dll/ctocpp/request_ctocpp.cc',
       'libcef_dll/ctocpp/request_ctocpp.h',
-      'libcef_dll/ctocpp/request_callback_ctocpp.cc',
-      'libcef_dll/ctocpp/request_callback_ctocpp.h',
       'libcef_dll/ctocpp/request_context_ctocpp.cc',
       'libcef_dll/ctocpp/request_context_ctocpp.h',
       'libcef_dll/cpptoc/request_context_handler_cpptoc.cc',

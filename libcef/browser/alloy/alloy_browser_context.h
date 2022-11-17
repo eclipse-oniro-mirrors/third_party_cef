@@ -39,6 +39,9 @@ class AlloyBrowserContext : public ChromeProfileAlloy,
  public:
   explicit AlloyBrowserContext(const CefRequestContextSettings& settings);
 
+  AlloyBrowserContext(const AlloyBrowserContext&) = delete;
+  AlloyBrowserContext& operator=(const AlloyBrowserContext&) = delete;
+
   // CefBrowserContext overrides.
   content::BrowserContext* AsBrowserContext() override { return this; }
   Profile* AsProfile() override { return this; }
@@ -64,10 +67,11 @@ class AlloyBrowserContext : public ChromeProfileAlloy,
   base::FilePath GetPath() const override;
   std::unique_ptr<content::ZoomLevelDelegate> CreateZoomLevelDelegate(
       const base::FilePath& partition_path) override;
-  bool IsOffTheRecord() const override;
   content::DownloadManagerDelegate* GetDownloadManagerDelegate() override;
   content::BrowserPluginGuestManager* GetGuestManager() override;
   storage::SpecialStoragePolicy* GetSpecialStoragePolicy() override;
+  content::PlatformNotificationService* GetPlatformNotificationService()
+      override;
   content::PushMessagingService* GetPushMessagingService() override;
   content::StorageNotificationService* GetStorageNotificationService() override;
   content::SSLHostStateDelegate* GetSSLHostStateDelegate() override;
@@ -95,7 +99,7 @@ class AlloyBrowserContext : public ChromeProfileAlloy,
 
   // Values checked in ProfileNetworkContextService::CreateNetworkContextParams
   // when creating the NetworkContext.
-  bool ShouldRestoreOldSessionCookies() const override {
+  bool ShouldRestoreOldSessionCookies() override {
     return ShouldPersistSessionCookies();
   }
   bool ShouldPersistSessionCookies() const override {
@@ -141,8 +145,6 @@ class AlloyBrowserContext : public ChromeProfileAlloy,
   std::unique_ptr<content::ResourceContext> resource_context_;
 
   scoped_refptr<MediaDeviceIDSalt> media_device_id_salt_;
-
-  DISALLOW_COPY_AND_ASSIGN(AlloyBrowserContext);
 };
 
 #endif  // CEF_LIBCEF_BROWSER_ALLOY_ALLOY_BROWSER_CONTEXT_H_

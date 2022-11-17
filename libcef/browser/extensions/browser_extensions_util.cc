@@ -10,11 +10,11 @@
 #include "libcef/browser/browser_info_manager.h"
 #include "libcef/browser/thread_util.h"
 #include "libcef/common/extensions/extensions_util.h"
+#include "libcef/common/frame_util.h"
 #include "libcef/features/runtime_checks.h"
 
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/printing/print_preview_dialog_controller.h"
-#include "content/browser/browser_plugin/browser_plugin_embedder.h"
 #include "content/browser/browser_plugin/browser_plugin_guest.h"
 #include "content/browser/web_contents/web_contents_impl.h"
 #include "content/public/browser/browser_context.h"
@@ -35,27 +35,12 @@ bool InsertWebContents(std::vector<content::WebContents*>* vector,
 
 }  // namespace
 
-content::WebContents* GetFullPageGuestForOwnerContents(
-    content::WebContents* owner) {
-  content::WebContentsImpl* owner_impl =
-      static_cast<content::WebContentsImpl*>(owner);
-  content::BrowserPluginEmbedder* plugin_embedder =
-      owner_impl->GetBrowserPluginEmbedder();
-  if (plugin_embedder) {
-    content::BrowserPluginGuest* plugin_guest =
-        plugin_embedder->GetFullPageGuest();
-    if (plugin_guest)
-      return plugin_guest->web_contents();
-  }
-  return nullptr;
-}
-
 void GetAllGuestsForOwnerContents(content::WebContents* owner,
                                   std::vector<content::WebContents*>* guests) {
   content::BrowserPluginGuestManager* plugin_guest_manager =
       owner->GetBrowserContext()->GetGuestManager();
-  plugin_guest_manager->ForEachGuest(owner,
-                                     base::Bind(InsertWebContents, guests));
+  plugin_guest_manager->ForEachGuest(
+      owner, base::BindRepeating(InsertWebContents, guests));
 }
 
 content::WebContents* GetOwnerForGuestContents(content::WebContents* guest) {
@@ -73,29 +58,27 @@ content::WebContents* GetOwnerForGuestContents(content::WebContents* guest) {
   return print_preview_controller->GetInitiator(guest);
 }
 
-CefRefPtr<CefBrowserHostBase> GetOwnerBrowserForFrameRoute(
-    int render_process_id,
-    int render_routing_id,
+CefRefPtr<CefBrowserHostBase> GetOwnerBrowserForGlobalId(
+    const content::GlobalRenderFrameHostId& global_id,
     bool* is_guest_view) {
   if (CEF_CURRENTLY_ON_UIT()) {
     // Use the non-thread-safe but potentially faster approach.
     content::RenderFrameHost* host =
-        content::RenderFrameHost::FromID(render_process_id, render_routing_id);
+        content::RenderFrameHost::FromID(global_id);
     if (host)
       return GetOwnerBrowserForHost(host, is_guest_view);
     return nullptr;
   } else {
     // Use the thread-safe approach.
     scoped_refptr<CefBrowserInfo> info =
-        CefBrowserInfoManager::GetInstance()->GetBrowserInfoForFrameRoute(
-            render_process_id, render_routing_id, is_guest_view);
+        CefBrowserInfoManager::GetInstance()->GetBrowserInfo(global_id,
+                                                             is_guest_view);
     if (info.get()) {
       CefRefPtr<CefBrowserHostBase> browser = info->browser();
       if (!browser.get()) {
         LOG(WARNING) << "Found browser id " << info->browser_id()
-                     << " but no browser object matching view process id "
-                     << render_process_id << " and frame routing id "
-                     << render_routing_id;
+                     << " but no browser object matching frame "
+                     << frame_util::GetFrameDebugString(global_id);
       }
       return browser;
     }

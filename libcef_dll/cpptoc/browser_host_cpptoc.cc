@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=0109529f61a92116f73bc6c0ff47bfd0423b6f07$
+// $hash=a45e96e634e88deb54637d0d570a827d49282150$
 //
 
 #include "libcef_dll/cpptoc/browser_host_cpptoc.h"
@@ -424,7 +424,6 @@ browser_host_print_to_pdf(struct _cef_browser_host_t* self,
 }
 
 void CEF_CALLBACK browser_host_find(struct _cef_browser_host_t* self,
-                                    int identifier,
                                     const cef_string_t* searchText,
                                     int forward,
                                     int matchCase,
@@ -443,8 +442,8 @@ void CEF_CALLBACK browser_host_find(struct _cef_browser_host_t* self,
 
   // Execute
   CefBrowserHostCppToC::Get(self)->Find(
-      identifier, CefString(searchText), forward ? true : false,
-      matchCase ? true : false, findNext ? true : false);
+      CefString(searchText), forward ? true : false, matchCase ? true : false,
+      findNext ? true : false);
 }
 
 void CEF_CALLBACK browser_host_stop_finding(struct _cef_browser_host_t* self,
@@ -872,20 +871,6 @@ browser_host_send_touch_event(struct _cef_browser_host_t* self,
 
   // Execute
   CefBrowserHostCppToC::Get(self)->SendTouchEvent(eventObj);
-}
-
-void CEF_CALLBACK
-browser_host_send_focus_event(struct _cef_browser_host_t* self, int setFocus) {
-  shutdown_checker::AssertNotShutdown();
-
-  // AUTO-GENERATED CONTENT - DELETE THIS COMMENT BEFORE MODIFYING
-
-  DCHECK(self);
-  if (!self)
-    return;
-
-  // Execute
-  CefBrowserHostCppToC::Get(self)->SendFocusEvent(setFocus ? true : false);
 }
 
 void CEF_CALLBACK
@@ -1350,7 +1335,6 @@ CefBrowserHostCppToC::CefBrowserHostCppToC() {
   GetStruct()->send_mouse_move_event = browser_host_send_mouse_move_event;
   GetStruct()->send_mouse_wheel_event = browser_host_send_mouse_wheel_event;
   GetStruct()->send_touch_event = browser_host_send_touch_event;
-  GetStruct()->send_focus_event = browser_host_send_focus_event;
   GetStruct()->send_capture_lost_event = browser_host_send_capture_lost_event;
   GetStruct()->notify_move_or_resize_started =
       browser_host_notify_move_or_resize_started;

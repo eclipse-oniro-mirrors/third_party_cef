@@ -4,6 +4,8 @@
 
 #include "libcef/common/alloy/alloy_main_delegate.h"
 
+#include <tuple>
+
 #include "libcef/browser/alloy/alloy_browser_context.h"
 #include "libcef/browser/alloy/alloy_content_browser_client.h"
 #include "libcef/common/cef_switches.h"
@@ -23,46 +25,44 @@
 #include "base/strings/string_util.h"
 #include "base/synchronization/waitable_event.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/media/router/media_router_feature.h"
 #include "chrome/child/pdf_child_init.h"
 #include "chrome/common/chrome_constants.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/utility/chrome_content_utility_client.h"
+#include "components/component_updater/component_updater_paths.h"
 #include "components/content_settings/core/common/content_settings_pattern.h"
 #include "components/embedder_support/switches.h"
+#include "components/spellcheck/common/spellcheck_features.h"
 #include "components/viz/common/features.h"
-#include "content/browser/browser_process_sub_thread.h"
 #include "content/public/common/content_features.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/main_function_params.h"
+#include "content/public/common/url_constants.h"
 #include "extensions/common/constants.h"
-#include "ipc/ipc_buildflags.h"
 #include "net/base/features.h"
 #include "pdf/pdf_ppapi.h"
 #include "sandbox/policy/switches.h"
 #include "services/network/public/cpp/features.h"
+#include "third_party/blink/public/common/switches.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/base/ui_base_paths.h"
 #include "ui/base/ui_base_switches.h"
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
 #include "libcef/common/util_mac.h"
 #endif
 
-#if BUILDFLAG(IPC_MESSAGE_LOG_ENABLED)
-#define IPC_MESSAGE_MACROS_LOG_ENABLED
-#include "content/public/common/content_ipc_logging.h"
-#define IPC_LOG_TABLE_ADD_ENTRY(msg_id, logger) \
-  content::RegisterIPCLogger(msg_id, logger)
-#include "libcef/common/cef_message_generator.h"
+#if BUILDFLAG(IS_WIN)
+#include "ui/base/resource/resource_bundle_win.h"
 #endif
 
 namespace {
 
 const char* const kNonWildcardDomainNonPortSchemes[] = {
-    extensions::kExtensionScheme};
+    extensions::kExtensionScheme, content::kChromeDevToolsScheme,
+    content::kChromeUIScheme, content::kChromeUIUntrustedScheme};
 const size_t kNonWildcardDomainNonPortSchemesSize =
     base::size(kNonWildcardDomainNonPortSchemes);
 
@@ -77,15 +77,15 @@ AlloyMainDelegate::AlloyMainDelegate(CefMainRunnerHandler* runner,
   extern void base_impl_stub();
   base_impl_stub();
 
-#if defined(OS_LINUX)
+#if BUILDFLAG(IS_LINUX)
   resource_util::OverrideAssetPath();
 #endif
 }
 
 AlloyMainDelegate::~AlloyMainDelegate() {}
 
-void AlloyMainDelegate::PreCreateMainMessageLoop() {
-  runner_->PreCreateMainMessageLoop();
+void AlloyMainDelegate::PreBrowserMain() {
+  runner_->PreBrowserMain();
 }
 
 bool AlloyMainDelegate::BasicStartupComplete(int* exit_code) {
@@ -93,7 +93,7 @@ bool AlloyMainDelegate::BasicStartupComplete(int* exit_code) {
   std::string process_type =
       command_line->GetSwitchValueASCII(switches::kProcessType);
 
-#if defined(OS_POSIX)
+#if BUILDFLAG(IS_POSIX)
   // Read the crash configuration file. Platforms using Breakpad also add a
   // command-line switch. On Windows this is done from chrome_elf.
   crash_reporting::BasicStartupComplete(command_line);
@@ -120,7 +120,7 @@ bool AlloyMainDelegate::BasicStartupComplete(int* exit_code) {
         command_line->AppendSwitchPath(switches::kBrowserSubprocessPath,
                                        file_path);
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
         // The sandbox is not supported when using a separate subprocess
         // executable on Windows.
         no_sandbox = true;
@@ -128,7 +128,7 @@ bool AlloyMainDelegate::BasicStartupComplete(int* exit_code) {
       }
     }
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
     if (settings_->framework_dir_path.length > 0) {
       base::FilePath file_path =
           base::FilePath(CefString(&settings_->framework_dir_path));
@@ -148,17 +148,18 @@ bool AlloyMainDelegate::BasicStartupComplete(int* exit_code) {
       command_line->AppendSwitch(sandbox::policy::switches::kNoSandbox);
 
     if (settings_->user_agent.length > 0) {
-      command_line->AppendSwitchASCII(embedder_support::kUserAgent,
-                                      CefString(&settings_->user_agent));
+      command_line->AppendSwitchASCII(
+          embedder_support::kUserAgent,
+          CefString(&settings_->user_agent).ToString());
     } else if (settings_->user_agent_product.length > 0) {
       command_line->AppendSwitchASCII(
           switches::kUserAgentProductAndVersion,
-          CefString(&settings_->user_agent_product));
+          CefString(&settings_->user_agent_product).ToString());
     }
 
     if (settings_->locale.length > 0) {
       command_line->AppendSwitchASCII(switches::kLang,
-                                      CefString(&settings_->locale));
+                                      CefString(&settings_->locale).ToString());
     } else if (!command_line->HasSwitch(switches::kLang)) {
       command_line->AppendSwitchASCII(switches::kLang, "en-US");
     }
@@ -207,8 +208,9 @@ bool AlloyMainDelegate::BasicStartupComplete(int* exit_code) {
     }
 
     if (settings_->javascript_flags.length > 0) {
-      command_line->AppendSwitchASCII(switches::kJavaScriptFlags,
-                                      CefString(&settings_->javascript_flags));
+      command_line->AppendSwitchASCII(
+          blink::switches::kJavaScriptFlags,
+          CefString(&settings_->javascript_flags).ToString());
     }
 
     if (settings_->pack_loading_disabled) {
@@ -244,16 +246,21 @@ bool AlloyMainDelegate::BasicStartupComplete(int* exit_code) {
           base::NumberToString(settings_->uncaught_exception_stack_size));
     }
 
+#if BUILDFLAG(IS_WIN)
     std::vector<std::string> disable_features;
 
-#if defined(OS_WIN)
     if (features::kCalculateNativeWinOcclusion.default_state ==
         base::FEATURE_ENABLED_BY_DEFAULT) {
       // TODO: Add support for occlusion detection in combination with native
       // parent windows (see issue #2805).
       disable_features.push_back(features::kCalculateNativeWinOcclusion.name);
     }
-#endif  // defined(OS_WIN)
+
+    if (spellcheck::kWinUseBrowserSpellChecker.default_state ==
+        base::FEATURE_ENABLED_BY_DEFAULT) {
+      // TODO: Add support for windows spellcheck service (see issue #3055).
+      disable_features.push_back(spellcheck::kWinUseBrowserSpellChecker.name);
+    }
 
     if (!disable_features.empty()) {
       DCHECK(!base::FeatureList::GetInstance());
@@ -267,33 +274,7 @@ bool AlloyMainDelegate::BasicStartupComplete(int* exit_code) {
       command_line->AppendSwitchASCII(switches::kDisableFeatures,
                                       disable_features_str);
     }
-
-    std::vector<std::string> enable_features;
-
-    if (media_router::kDialMediaRouteProvider.default_state ==
-        base::FEATURE_DISABLED_BY_DEFAULT) {
-      // Enable discovery of DIAL devices.
-      enable_features.push_back(media_router::kDialMediaRouteProvider.name);
-    }
-
-    if (media_router::kCastMediaRouteProvider.default_state ==
-        base::FEATURE_DISABLED_BY_DEFAULT) {
-      // Enable discovery of Cast devices.
-      enable_features.push_back(media_router::kCastMediaRouteProvider.name);
-    }
-
-    if (!enable_features.empty()) {
-      DCHECK(!base::FeatureList::GetInstance());
-      std::string enable_features_str =
-          command_line->GetSwitchValueASCII(switches::kEnableFeatures);
-      for (auto feature_str : enable_features) {
-        if (!enable_features_str.empty())
-          enable_features_str += ",";
-        enable_features_str += feature_str;
-      }
-      command_line->AppendSwitchASCII(switches::kEnableFeatures,
-                                      enable_features_str);
-    }
+#endif  // BUILDFLAG(IS_WIN)
   }
 
   if (application_) {
@@ -302,7 +283,7 @@ bool AlloyMainDelegate::BasicStartupComplete(int* exit_code) {
         new CefCommandLineImpl(command_line, false, false));
     application_->OnBeforeCommandLineProcessing(CefString(process_type),
                                                 commandLinePtr.get());
-    commandLinePtr->Detach(nullptr);
+    std::ignore = commandLinePtr->Detach(nullptr);
   }
 
   // Initialize logging.
@@ -357,7 +338,7 @@ bool AlloyMainDelegate::BasicStartupComplete(int* exit_code) {
 
   content::SetContentClient(&content_client_);
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
   util_mac::BasicStartupComplete();
 #endif
 
@@ -372,13 +353,14 @@ void AlloyMainDelegate::PreSandboxStartup() {
 
   if (process_type.empty()) {
 // Only override these paths when executing the main process.
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
     util_mac::PreSandboxStartup();
 #endif
 
     resource_util::OverrideDefaultDownloadDir();
-    resource_util::OverrideUserDataDir(settings_, command_line);
   }
+
+  resource_util::OverrideUserDataDir(settings_, command_line);
 
   if (command_line->HasSwitch(switches::kDisablePackLoading))
     resource_bundle_delegate_.set_pack_loading_disabled(true);
@@ -387,8 +369,13 @@ void AlloyMainDelegate::PreSandboxStartup() {
   // chrome::DIR_CRASH_DUMPS must be configured before calling this function.
   crash_reporting::PreSandboxStartup(*command_line, process_type);
 
+  // Register the component_updater PathProvider.
+  component_updater::RegisterPathProvider(chrome::DIR_COMPONENTS,
+                                          chrome::DIR_INTERNAL_PLUGINS,
+                                          chrome::DIR_USER_DATA);
+
   InitializeResourceBundle();
-  MaybeInitializeGDI();
+  MaybePatchGdiGetFontData();
 }
 
 void AlloyMainDelegate::SandboxInitialized(const std::string& process_type) {
@@ -397,21 +384,21 @@ void AlloyMainDelegate::SandboxInitialized(const std::string& process_type) {
                                            chrome_pdf::PPP_ShutdownModule);
 }
 
-int AlloyMainDelegate::RunProcess(
+absl::variant<int, content::MainFunctionParams> AlloyMainDelegate::RunProcess(
     const std::string& process_type,
-    const content::MainFunctionParams& main_function_params) {
+    content::MainFunctionParams main_function_params) {
   if (process_type.empty()) {
-    return runner_->RunMainProcess(main_function_params);
+    return runner_->RunMainProcess(std::move(main_function_params));
   }
 
-  return -1;
+  return std::move(main_function_params);
 }
 
 void AlloyMainDelegate::ProcessExiting(const std::string& process_type) {
   ui::ResourceBundle::CleanupSharedInstance();
 }
 
-#if defined(OS_LINUX)
+#if BUILDFLAG(IS_LINUX)
 void AlloyMainDelegate::ZygoteForked() {
   base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
   const std::string& process_type =
@@ -521,6 +508,20 @@ void AlloyMainDelegate::InitializeResourceBundle() {
       base::PathService::Override(ui::DIR_LOCALES, locales_dir);
   }
 
+#if BUILDFLAG(IS_WIN)
+  // From chrome/app/chrome_main_delegate.cc
+  // Throbber icons and cursors are still stored in chrome.dll,
+  // this can be killed once those are merged into resources.pak. See
+  // GlassBrowserFrameView::InitThrobberIcons(), https://crbug.com/368327 and
+  // https://crbug.com/1178117.
+  auto module_handle =
+      ::GetModuleHandle(CefAppManager::Get()->GetResourceDllName());
+  if (!module_handle)
+    module_handle = ::GetModuleHandle(NULL);
+
+  ui::SetResourcesDataDLL(module_handle);
+#endif
+
   std::string locale = command_line->GetSwitchValueASCII(switches::kLang);
   DCHECK(!locale.empty());
 
@@ -541,7 +542,7 @@ void AlloyMainDelegate::InitializeResourceBundle() {
 
     if (base::PathExists(resources_pak_file)) {
       resource_bundle.AddDataPackFromPath(resources_pak_file,
-                                          ui::SCALE_FACTOR_NONE);
+                                          ui::kScaleFactorNone);
     } else {
       LOG(ERROR) << "Could not load resources.pak";
     }
@@ -549,19 +550,19 @@ void AlloyMainDelegate::InitializeResourceBundle() {
     // Always load the 1x data pack first as the 2x data pack contains both 1x
     // and 2x images. The 1x data pack only has 1x images, thus passes in an
     // accurate scale factor to gfx::ImageSkia::AddRepresentation.
-    if (resource_util::IsScaleFactorSupported(ui::SCALE_FACTOR_100P)) {
+    if (resource_util::IsScaleFactorSupported(ui::k100Percent)) {
       if (base::PathExists(chrome_100_percent_pak_file)) {
         resource_bundle.AddDataPackFromPath(chrome_100_percent_pak_file,
-                                            ui::SCALE_FACTOR_100P);
+                                            ui::k100Percent);
       } else {
         LOG(ERROR) << "Could not load chrome_100_percent.pak";
       }
     }
 
-    if (resource_util::IsScaleFactorSupported(ui::SCALE_FACTOR_200P)) {
+    if (resource_util::IsScaleFactorSupported(ui::k200Percent)) {
       if (base::PathExists(chrome_200_percent_pak_file)) {
         resource_bundle.AddDataPackFromPath(chrome_200_percent_pak_file,
-                                            ui::SCALE_FACTOR_200P);
+                                            ui::k200Percent);
       } else {
         LOG(ERROR) << "Could not load chrome_200_percent.pak";
       }

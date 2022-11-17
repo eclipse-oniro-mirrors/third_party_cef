@@ -99,6 +99,9 @@ class UploadFolderHelper
       CefFileDialogRunner::RunFileChooserCallback callback)
       : callback_(std::move(callback)) {}
 
+  UploadFolderHelper(const UploadFolderHelper&) = delete;
+  UploadFolderHelper& operator=(const UploadFolderHelper&) = delete;
+
   ~UploadFolderHelper() override {
     if (!callback_.is_null()) {
       if (CEF_CURRENTLY_ON_UIT()) {
@@ -133,8 +136,6 @@ class UploadFolderHelper
 
   CefFileDialogRunner::RunFileChooserCallback callback_;
   std::vector<base::FilePath> select_files_;
-
-  DISALLOW_COPY_AND_ASSIGN(UploadFolderHelper);
 };
 
 }  // namespace
@@ -197,7 +198,7 @@ void CefFileDialogManager::RunFileDialog(
       params.accept_types.push_back(*it);
   }
 
-  RunFileChooser(params, base::Bind(RunFileDialogDismissed, callback));
+  RunFileChooser(params, base::BindOnce(RunFileDialogDismissed, callback));
 }
 
 void CefFileDialogManager::RunFileChooser(

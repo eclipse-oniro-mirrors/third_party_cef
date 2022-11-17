@@ -1,4 +1,4 @@
-// Copyright (c) 2021 Marshall A. Greenblatt. All rights reserved.
+// Copyright (c) 2022 Marshall A. Greenblatt. All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -33,7 +33,7 @@
 // by hand. See the translator.README.txt file in the tools directory for
 // more information.
 //
-// $hash=9881a00ef237b6972f14c071544387fc90fe18f1$
+// $hash=d2aadfa4159846c2719387e2814d5e108def4b81$
 //
 
 #ifndef CEF_INCLUDE_CAPI_VIEWS_CEF_VIEW_CAPI_H_
@@ -219,6 +219,19 @@ typedef struct _cef_view_t {
   // DIP screen coordinates if there is no parent.
   ///
   cef_point_t(CEF_CALLBACK* get_position)(struct _cef_view_t* self);
+
+  ///
+  // Sets the insets for this View. |insets| is in parent coordinates, or DIP
+  // screen coordinates if there is no parent.
+  ///
+  void(CEF_CALLBACK* set_insets)(struct _cef_view_t* self,
+                                 const cef_insets_t* insets);
+
+  ///
+  // Returns the insets for this View in parent coordinates, or DIP screen
+  // coordinates if there is no parent.
+  ///
+  cef_insets_t(CEF_CALLBACK* get_insets)(struct _cef_view_t* self);
 
   ///
   // Returns the size this View would like to be if enough space is available.

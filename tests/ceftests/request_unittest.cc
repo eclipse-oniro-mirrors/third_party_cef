@@ -4,7 +4,7 @@
 
 #include <map>
 
-#include "include/base/cef_bind.h"
+#include "include/base/cef_callback.h"
 #include "include/cef_request.h"
 #include "include/wrapper/cef_closure_task.h"
 #include "tests/ceftests/test_handler.h"
@@ -245,7 +245,7 @@ class RequestSendRecvTestHandler : public TestHandler {
       CefRefPtr<CefBrowser> browser,
       CefRefPtr<CefFrame> frame,
       CefRefPtr<CefRequest> request,
-      CefRefPtr<CefRequestCallback> callback) override {
+      CefRefPtr<CefCallback> callback) override {
     EXPECT_IO_THREAD();
 
     request_id_ = request->GetIdentifier();
@@ -572,7 +572,7 @@ class TypeTestHandler : public TestHandler {
       CefRefPtr<CefBrowser> browser,
       CefRefPtr<CefFrame> frame,
       CefRefPtr<CefRequest> request,
-      CefRefPtr<CefRequestCallback> callback) override {
+      CefRefPtr<CefCallback> callback) override {
     load_expectations_.GotRequest(request);
 
     return RV_CONTINUE;
@@ -586,7 +586,7 @@ class TypeTestHandler : public TestHandler {
         get_expectations_.IsDone(false)) {
       completed_browser_side_ = true;
       // Destroy the test on the UI thread.
-      CefPostTask(TID_UI, base::Bind(&TypeTestHandler::DestroyTest, this));
+      CefPostTask(TID_UI, base::BindOnce(&TypeTestHandler::DestroyTest, this));
     }
 
     return TestHandler::GetResourceHandler(browser, frame, request);

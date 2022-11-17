@@ -63,6 +63,7 @@
 from __future__ import absolute_import
 from __future__ import print_function
 import os
+import platform as python_platform
 import shlex
 import sys
 
@@ -74,8 +75,12 @@ src_dir = os.path.abspath(os.path.join(cef_dir, os.pardir))
 # Determine the platform.
 if sys.platform == 'win32':
   platform = 'windows'
+  # Windows machines report 'ARM64' or 'AMD64'.
+  machine = 'arm64' if python_platform.machine() == 'ARM64' else 'amd64'
 elif sys.platform == 'darwin':
   platform = 'mac'
+  # Mac machines report 'arm64' or 'x86_64'.
+  machine = 'arm64' if python_platform.machine() == 'arm64' else 'amd64'
 elif sys.platform.startswith('linux'):
   platform = 'linux'
 else:
@@ -230,6 +235,12 @@ def GetRecommendedDefaultArgs():
     # builds will fail on Windows due to linker issues (running out of memory,
     # etc). See https://bitbucket.org/chromiumembedded/cef/issues/2679.
     result['forbid_non_component_debug_builds'] = False
+
+  if platform == 'mac':
+    # Use the system allocator on Mac. Default is 'partition' (PartitionAlloc)
+    # with the allocator shim enabled. See issue #3061.
+    result['use_allocator'] = 'none'
+    result['use_allocator_shim'] = False
 
   if platform == 'linux':
     # Use a sysroot environment. Default is true. False is recommended for local
@@ -492,6 +503,10 @@ def GetConfigArgsSandbox(platform, args, is_debug, cpu):
     # Allow non-component Debug builds for the sandbox.
     add_args['forbid_non_component_debug_builds'] = False
 
+  if not is_debug:
+    # Disable DCHECKs in Release builds.
+    add_args['dcheck_always_on'] = False
+
   result = MergeDicts(args, add_args, {
       'is_debug': is_debug,
       'target_cpu': cpu,
@@ -553,16 +568,18 @@ def GetAllPlatformConfigs(build_args):
               % cpu)
     else:
       supported_cpus = ['x64']
-  elif platform == 'windows':
-    supported_cpus = ['x86', 'x64']
-    if os.environ.get('CEF_ENABLE_ARM64', '') == '1':
-      supported_cpus.append('arm64')
-  elif platform == 'mac':
-    supported_cpus = ['x64']
-    if os.environ.get('CEF_ENABLE_ARM64', '') == '1':
+  elif platform in ('windows', 'mac'):
+    if machine == 'amd64' or os.environ.get('CEF_ENABLE_AMD64', '') == '1':
+      supported_cpus.append('x64')
+      if platform == 'windows':
+        supported_cpus.append('x86')
+    if machine == 'arm64' or os.environ.get('CEF_ENABLE_ARM64', '') == '1':
       supported_cpus.append('arm64')
   else:
     raise Exception('Unsupported platform')
+
+  if len(supported_cpus) == 0:
+    raise Exception('No supported architectures')
 
   for cpu in supported_cpus:
     if create_debug:

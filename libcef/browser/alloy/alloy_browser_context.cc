@@ -55,6 +55,9 @@ class CefVisitedLinkListener : public visitedlink::VisitedLinkWriter::Listener {
  public:
   CefVisitedLinkListener() { DCHECK(listener_map_.empty()); }
 
+  CefVisitedLinkListener(const CefVisitedLinkListener&) = delete;
+  CefVisitedLinkListener& operator=(const CefVisitedLinkListener&) = delete;
+
   void CreateListenerForContext(content::BrowserContext* context) {
     CEF_REQUIRE_UIT();
     auto listener =
@@ -94,12 +97,10 @@ class CefVisitedLinkListener : public visitedlink::VisitedLinkWriter::Listener {
 
  private:
   // Map of AlloyBrowserContext to the associated VisitedLinkEventListener.
-  typedef std::map<const content::BrowserContext*,
-                   std::unique_ptr<visitedlink::VisitedLinkEventListener>>
-      ListenerMap;
+  using ListenerMap =
+      std::map<const content::BrowserContext*,
+               std::unique_ptr<visitedlink::VisitedLinkEventListener>>;
   ListenerMap listener_map_;
-
-  DISALLOW_COPY_AND_ASSIGN(CefVisitedLinkListener);
 };
 
 AlloyBrowserContext::AlloyBrowserContext(
@@ -311,13 +312,12 @@ AlloyBrowserContext::GetClientHintsControllerDelegate() {
 
 ChromeZoomLevelPrefs* AlloyBrowserContext::GetZoomLevelPrefs() {
   return static_cast<ChromeZoomLevelPrefs*>(
-      GetStoragePartition(this, nullptr)->GetZoomLevelDelegate());
+      GetStoragePartition(nullptr)->GetZoomLevelDelegate());
 }
 
 scoped_refptr<network::SharedURLLoaderFactory>
 AlloyBrowserContext::GetURLLoaderFactory() {
-  return GetDefaultStoragePartition(this)
-      ->GetURLLoaderFactoryForBrowserProcess();
+  return GetDefaultStoragePartition()->GetURLLoaderFactoryForBrowserProcess();
 }
 
 base::FilePath AlloyBrowserContext::GetPath() {
@@ -339,28 +339,27 @@ AlloyBrowserContext::CreateZoomLevelDelegate(
       zoom::ZoomEventManager::GetForBrowserContext(this)->GetWeakPtr()));
 }
 
-bool AlloyBrowserContext::IsOffTheRecord() const {
-  // Alloy contexts are never flagged as off-the-record. It causes problems
-  // for the extension system.
-  return false;
-}
-
 content::DownloadManagerDelegate*
 AlloyBrowserContext::GetDownloadManagerDelegate() {
   if (!download_manager_delegate_) {
-    content::DownloadManager* manager =
-        BrowserContext::GetDownloadManager(this);
-    download_manager_delegate_.reset(new CefDownloadManagerDelegate(manager));
+    download_manager_delegate_.reset(
+        new CefDownloadManagerDelegate(GetDownloadManager()));
   }
   return download_manager_delegate_.get();
 }
 
 content::BrowserPluginGuestManager* AlloyBrowserContext::GetGuestManager() {
-  DCHECK(extensions::ExtensionsEnabled());
+  if (!extensions::ExtensionsEnabled())
+    return nullptr;
   return guest_view::GuestViewManager::FromBrowserContext(this);
 }
 
 storage::SpecialStoragePolicy* AlloyBrowserContext::GetSpecialStoragePolicy() {
+  return nullptr;
+}
+
+content::PlatformNotificationService*
+AlloyBrowserContext::GetPlatformNotificationService() {
   return nullptr;
 }
 

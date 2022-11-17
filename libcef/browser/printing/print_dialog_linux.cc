@@ -12,6 +12,7 @@
 #include "libcef/browser/print_settings_impl.h"
 #include "libcef/browser/thread_util.h"
 #include "libcef/common/app_manager.h"
+#include "libcef/common/frame_util.h"
 
 #include "base/bind.h"
 #include "base/files/file_util.h"
@@ -19,7 +20,9 @@
 #include "base/logging.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
+#include "content/public/browser/global_routing_id.h"
 #include "printing/metafile.h"
+#include "printing/mojom/print.mojom-shared.h"
 #include "printing/print_job_constants.h"
 #include "printing/print_settings.h"
 
@@ -32,6 +35,10 @@ class CefPrintDialogCallbackImpl : public CefPrintDialogCallback {
   explicit CefPrintDialogCallbackImpl(CefRefPtr<CefPrintDialogLinux> dialog)
       : dialog_(dialog) {}
 
+  CefPrintDialogCallbackImpl(const CefPrintDialogCallbackImpl&) = delete;
+  CefPrintDialogCallbackImpl& operator=(const CefPrintDialogCallbackImpl&) =
+      delete;
+
   void Continue(CefRefPtr<CefPrintSettings> settings) override {
     if (CEF_CURRENTLY_ON_UIT()) {
       if (dialog_.get()) {
@@ -39,8 +46,9 @@ class CefPrintDialogCallbackImpl : public CefPrintDialogCallback {
         dialog_ = nullptr;
       }
     } else {
-      CEF_POST_TASK(CEF_UIT, base::Bind(&CefPrintDialogCallbackImpl::Continue,
-                                        this, settings));
+      CEF_POST_TASK(CEF_UIT,
+                    base::BindOnce(&CefPrintDialogCallbackImpl::Continue, this,
+                                   settings));
     }
   }
 
@@ -52,7 +60,7 @@ class CefPrintDialogCallbackImpl : public CefPrintDialogCallback {
       }
     } else {
       CEF_POST_TASK(CEF_UIT,
-                    base::Bind(&CefPrintDialogCallbackImpl::Cancel, this));
+                    base::BindOnce(&CefPrintDialogCallbackImpl::Cancel, this));
     }
   }
 
@@ -62,13 +70,15 @@ class CefPrintDialogCallbackImpl : public CefPrintDialogCallback {
   CefRefPtr<CefPrintDialogLinux> dialog_;
 
   IMPLEMENT_REFCOUNTING(CefPrintDialogCallbackImpl);
-  DISALLOW_COPY_AND_ASSIGN(CefPrintDialogCallbackImpl);
 };
 
 class CefPrintJobCallbackImpl : public CefPrintJobCallback {
  public:
   explicit CefPrintJobCallbackImpl(CefRefPtr<CefPrintDialogLinux> dialog)
       : dialog_(dialog) {}
+
+  CefPrintJobCallbackImpl(const CefPrintJobCallbackImpl&) = delete;
+  CefPrintJobCallbackImpl& operator=(const CefPrintJobCallbackImpl&) = delete;
 
   void Continue() override {
     if (CEF_CURRENTLY_ON_UIT()) {
@@ -78,7 +88,7 @@ class CefPrintJobCallbackImpl : public CefPrintJobCallback {
       }
     } else {
       CEF_POST_TASK(CEF_UIT,
-                    base::Bind(&CefPrintJobCallbackImpl::Continue, this));
+                    base::BindOnce(&CefPrintJobCallbackImpl::Continue, this));
     }
   }
 
@@ -88,7 +98,6 @@ class CefPrintJobCallbackImpl : public CefPrintJobCallback {
   CefRefPtr<CefPrintDialogLinux> dialog_;
 
   IMPLEMENT_REFCOUNTING(CefPrintJobCallbackImpl);
-  DISALLOW_COPY_AND_ASSIGN(CefPrintJobCallbackImpl);
 };
 
 // static
@@ -105,8 +114,10 @@ gfx::Size CefPrintDialogLinux::GetPdfPaperSize(
 
   gfx::Size size;
 
-  auto browser = extensions::GetOwnerBrowserForFrameRoute(
-      context->render_process_id(), context->render_frame_id(), nullptr);
+  auto browser = extensions::GetOwnerBrowserForGlobalId(
+      frame_util::MakeGlobalId(context->render_process_id(),
+                               context->render_frame_id()),
+      nullptr);
   DCHECK(browser);
   if (browser && browser->GetClient()) {
     if (auto handler = browser->GetClient()->GetPrintHandler()) {
@@ -138,8 +149,10 @@ void CefPrintDialogLinux::OnPrintStart(CefRefPtr<CefBrowserHostBase> browser) {
 CefPrintDialogLinux::CefPrintDialogLinux(PrintingContextLinux* context)
     : context_(context) {
   DCHECK(context_);
-  browser_ = extensions::GetOwnerBrowserForFrameRoute(
-      context_->render_process_id(), context_->render_frame_id(), nullptr);
+  browser_ = extensions::GetOwnerBrowserForGlobalId(
+      frame_util::MakeGlobalId(context_->render_process_id(),
+                               context_->render_frame_id()),
+      nullptr);
   DCHECK(browser_);
 }
 
@@ -168,7 +181,7 @@ void CefPrintDialogLinux::ShowDialog(
 
   SetHandler();
   if (!handler_.get()) {
-    std::move(callback).Run(PrintingContextLinux::CANCEL);
+    std::move(callback).Run(printing::mojom::ResultCode::kCanceled);
     return;
   }
 
@@ -214,8 +227,9 @@ void CefPrintDialogLinux::PrintDocument(
   }
 
   // No errors, continue printing.
-  CEF_POST_TASK(CEF_UIT, base::Bind(&CefPrintDialogLinux::SendDocumentToPrinter,
-                                    this, document_name));
+  CEF_POST_TASK(
+      CEF_UIT, base::BindOnce(&CefPrintDialogLinux::SendDocumentToPrinter, this,
+                              document_name));
 }
 
 void CefPrintDialogLinux::AddRefToDialog() {
@@ -283,11 +297,11 @@ void CefPrintDialogLinux::OnPrintContinue(
   CefPrintSettingsImpl* impl =
       static_cast<CefPrintSettingsImpl*>(settings.get());
   context_->InitWithSettings(impl->TakeOwnership());
-  std::move(callback_).Run(PrintingContextLinux::OK);
+  std::move(callback_).Run(printing::mojom::ResultCode::kSuccess);
 }
 
 void CefPrintDialogLinux::OnPrintCancel() {
-  std::move(callback_).Run(PrintingContextLinux::CANCEL);
+  std::move(callback_).Run(printing::mojom::ResultCode::kCanceled);
 }
 
 void CefPrintDialogLinux::OnJobCompleted() {

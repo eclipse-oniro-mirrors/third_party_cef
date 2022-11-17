@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=00c386274cefb6ae461544f93cea6df7d2a6f367$
+// $hash=faa11d38d989eb250f28646485cd2f0d38438807$
 //
 
 #ifndef CEF_LIBCEF_DLL_CTOCPP_RESOURCE_BUNDLE_CTOCPP_H_
@@ -35,11 +35,11 @@ class CefResourceBundleCToCpp
   virtual ~CefResourceBundleCToCpp();
 
   // CefResourceBundle methods.
-  CefString GetLocalizedString(int string_id) OVERRIDE;
-  CefRefPtr<CefBinaryValue> GetDataResource(int resource_id) OVERRIDE;
+  CefString GetLocalizedString(int string_id) override;
+  CefRefPtr<CefBinaryValue> GetDataResource(int resource_id) override;
   CefRefPtr<CefBinaryValue> GetDataResourceForScale(
       int resource_id,
-      ScaleFactor scale_factor) OVERRIDE;
+      ScaleFactor scale_factor) override;
 };
 
 #endif  // CEF_LIBCEF_DLL_CTOCPP_RESOURCE_BUNDLE_CTOCPP_H_

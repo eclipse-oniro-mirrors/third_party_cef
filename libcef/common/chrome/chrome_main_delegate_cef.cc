@@ -5,6 +5,8 @@
 
 #include "libcef/common/chrome/chrome_main_delegate_cef.h"
 
+#include <tuple>
+
 #include "libcef/browser/chrome/chrome_browser_context.h"
 #include "libcef/browser/chrome/chrome_content_browser_client_cef.h"
 #include "libcef/common/cef_switches.h"
@@ -19,9 +21,10 @@
 #include "components/embedder_support/switches.h"
 #include "content/public/common/content_switches.h"
 #include "sandbox/policy/switches.h"
+#include "third_party/blink/public/common/switches.h"
 #include "ui/base/ui_base_switches.h"
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
 #include "libcef/common/util_mac.h"
 #endif
 
@@ -39,7 +42,7 @@ ChromeMainDelegateCef::ChromeMainDelegateCef(CefMainRunnerHandler* runner,
       runner_(runner),
       settings_(settings),
       application_(application) {
-#if defined(OS_LINUX)
+#if BUILDFLAG(IS_LINUX)
   resource_util::OverrideAssetPath();
 #endif
 }
@@ -54,7 +57,7 @@ bool ChromeMainDelegateCef::BasicStartupComplete(int* exit_code) {
 
   base::CommandLine* command_line = base::CommandLine::ForCurrentProcess();
 
-#if defined(OS_POSIX)
+#if BUILDFLAG(IS_POSIX)
   // Read the crash configuration file. Platforms using Breakpad also add a
   // command-line switch. On Windows this is done from chrome_elf.
   crash_reporting::BasicStartupComplete(command_line);
@@ -82,24 +85,26 @@ bool ChromeMainDelegateCef::BasicStartupComplete(int* exit_code) {
     }
 
     if (settings_->user_agent.length > 0) {
-      command_line->AppendSwitchASCII(embedder_support::kUserAgent,
-                                      CefString(&settings_->user_agent));
+      command_line->AppendSwitchASCII(
+          embedder_support::kUserAgent,
+          CefString(&settings_->user_agent).ToString());
     } else if (settings_->user_agent_product.length > 0) {
       command_line->AppendSwitchASCII(
           switches::kUserAgentProductAndVersion,
-          CefString(&settings_->user_agent_product));
+          CefString(&settings_->user_agent_product).ToString());
     }
 
     if (settings_->locale.length > 0) {
       command_line->AppendSwitchASCII(switches::kLang,
-                                      CefString(&settings_->locale));
+                                      CefString(&settings_->locale).ToString());
     } else if (!command_line->HasSwitch(switches::kLang)) {
       command_line->AppendSwitchASCII(switches::kLang, "en-US");
     }
 
     if (settings_->javascript_flags.length > 0) {
-      command_line->AppendSwitchASCII(switches::kJavaScriptFlags,
-                                      CefString(&settings_->javascript_flags));
+      command_line->AppendSwitchASCII(
+          blink::switches::kJavaScriptFlags,
+          CefString(&settings_->javascript_flags).ToString());
     }
 
     if (settings_->remote_debugging_port >= 1024 &&
@@ -122,10 +127,10 @@ bool ChromeMainDelegateCef::BasicStartupComplete(int* exit_code) {
         new CefCommandLineImpl(command_line, false, false));
     application_->OnBeforeCommandLineProcessing(process_type,
                                                 commandLinePtr.get());
-    commandLinePtr->Detach(nullptr);
+    std::ignore = commandLinePtr->Detach(nullptr);
   }
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
   util_mac::BasicStartupComplete();
 #endif
 
@@ -138,11 +143,11 @@ void ChromeMainDelegateCef::PreSandboxStartup() {
   const std::string& process_type =
       command_line->GetSwitchValueASCII(switches::kProcessType);
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
   if (process_type.empty()) {
     util_mac::PreSandboxStartup();
   }
-#endif  // defined(OS_MAC)
+#endif  // BUILDFLAG(IS_MAC)
 
   // Since this may be configured via CefSettings we override the value on
   // all platforms. We can't use the default implementation on macOS because
@@ -157,24 +162,26 @@ void ChromeMainDelegateCef::PreSandboxStartup() {
   crash_reporting::PreSandboxStartup(*command_line, process_type);
 }
 
-void ChromeMainDelegateCef::PreCreateMainMessageLoop() {
+void ChromeMainDelegateCef::PreBrowserMain() {
   // The parent ChromeMainDelegate implementation creates the NSApplication
   // instance on macOS, and we intentionally don't want to do that here.
   // TODO(macos): Do we need l10n_util::OverrideLocaleWithCocoaLocale()?
-  runner_->PreCreateMainMessageLoop();
+  runner_->PreBrowserMain();
 }
 
-int ChromeMainDelegateCef::RunProcess(
+absl::variant<int, content::MainFunctionParams>
+ChromeMainDelegateCef::RunProcess(
     const std::string& process_type,
-    const content::MainFunctionParams& main_function_params) {
+    content::MainFunctionParams main_function_params) {
   if (process_type.empty()) {
-    return runner_->RunMainProcess(main_function_params);
+    return runner_->RunMainProcess(std::move(main_function_params));
   }
 
-  return ChromeMainDelegate::RunProcess(process_type, main_function_params);
+  return ChromeMainDelegate::RunProcess(process_type,
+                                        std::move(main_function_params));
 }
 
-#if defined(OS_LINUX)
+#if BUILDFLAG(IS_LINUX)
 void ChromeMainDelegateCef::ZygoteForked() {
   ChromeMainDelegate::ZygoteForked();
 
@@ -185,7 +192,7 @@ void ChromeMainDelegateCef::ZygoteForked() {
   // Initialize crash reporting state for the newly forked process.
   crash_reporting::ZygoteForked(command_line, process_type);
 }
-#endif  // defined(OS_LINUX)
+#endif  // BUILDFLAG(IS_LINUX)
 
 content::ContentClient* ChromeMainDelegateCef::CreateContentClient() {
   return &chrome_content_client_cef_;

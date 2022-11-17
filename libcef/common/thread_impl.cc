@@ -49,7 +49,7 @@ CefThreadImpl::~CefThreadImpl() {
       // Delete |thread_| on the correct thread.
       owner_task_runner_->PostTask(
           FROM_HERE,
-          base::Bind(StopAndDestroy, base::Unretained(thread_.release())));
+          base::BindOnce(StopAndDestroy, base::Unretained(thread_.release())));
     } else {
       StopAndDestroy(thread_.release());
     }
@@ -97,7 +97,7 @@ bool CefThreadImpl::Create(const CefString& display_name,
 
   options.joinable = stoppable;
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   if (com_init_mode != COM_INIT_MODE_NONE) {
     if (com_init_mode == COM_INIT_MODE_STA)
       options.message_pump_type = base::MessagePumpType::UI;
@@ -105,7 +105,7 @@ bool CefThreadImpl::Create(const CefString& display_name,
   }
 #endif
 
-  if (!thread_->StartWithOptions(options)) {
+  if (!thread_->StartWithOptions(std::move(options))) {
     thread_.reset();
     return false;
   }

@@ -56,8 +56,6 @@ CefRefPtr<ChromeBrowserHostImpl> ChromeBrowserHostImpl::Create(
       ChromeBrowserHostImpl::GetBrowserForContents(web_contents);
   CHECK(browser_host);
 
-  browser->window()->Show();
-
   return browser_host;
 }
 
@@ -86,21 +84,10 @@ CefRefPtr<ChromeBrowserHostImpl> ChromeBrowserHostImpl::GetBrowserForContents(
 }
 
 // static
-CefRefPtr<ChromeBrowserHostImpl>
-ChromeBrowserHostImpl::GetBrowserForFrameTreeNode(int frame_tree_node_id) {
+CefRefPtr<ChromeBrowserHostImpl> ChromeBrowserHostImpl::GetBrowserForGlobalId(
+    const content::GlobalRenderFrameHostId& global_id) {
   REQUIRE_CHROME_RUNTIME();
-  auto browser =
-      CefBrowserHostBase::GetBrowserForFrameTreeNode(frame_tree_node_id);
-  return static_cast<ChromeBrowserHostImpl*>(browser.get());
-}
-
-// static
-CefRefPtr<ChromeBrowserHostImpl> ChromeBrowserHostImpl::GetBrowserForFrameRoute(
-    int render_process_id,
-    int render_routing_id) {
-  REQUIRE_CHROME_RUNTIME();
-  auto browser = CefBrowserHostBase::GetBrowserForFrameRoute(render_process_id,
-                                                             render_routing_id);
+  auto browser = CefBrowserHostBase::GetBrowserForGlobalId(global_id);
   return static_cast<ChromeBrowserHostImpl*>(browser.get());
 }
 
@@ -130,8 +117,6 @@ void ChromeBrowserHostImpl::AddNewContents(
       TabStripModel::ADD_ACTIVE);
 
   SetBrowser(browser);
-
-  browser->window()->Show();
 }
 
 void ChromeBrowserHostImpl::OnWebContentsDestroyed(
@@ -230,8 +215,7 @@ void ChromeBrowserHostImpl::PrintToPDF(
   callback->OnPdfPrintFinished(CefString(), false);
 }
 
-void ChromeBrowserHostImpl::Find(int identifier,
-                                 const CefString& searchText,
+void ChromeBrowserHostImpl::Find(const CefString& searchText,
                                  bool forward,
                                  bool matchCase,
                                  bool findNext) {
@@ -283,10 +267,6 @@ void ChromeBrowserHostImpl::SendExternalBeginFrame() {
 }
 
 void ChromeBrowserHostImpl::SendTouchEvent(const CefTouchEvent& event) {
-  NOTIMPLEMENTED();
-}
-
-void ChromeBrowserHostImpl::SendFocusEvent(bool setFocus) {
   NOTIMPLEMENTED();
 }
 
@@ -479,14 +459,23 @@ Browser* ChromeBrowserHostImpl::CreateBrowser(
   // associated BrowserView.
   auto browser = Browser::Create(chrome_params);
 
+  bool show_browser = true;
+
 #if defined(TOOLKIT_VIEWS)
   if (chrome_browser_view) {
     // Initialize the BrowserFrame and BrowserView and create the controls that
     // require access to the Browser.
     chrome_browser_view->InitBrowser(base::WrapUnique(browser),
                                      params.browser_view);
+
+    // Don't show the browser by default.
+    show_browser = false;
   }
 #endif
+
+  if (show_browser) {
+    browser->window()->Show();
+  }
 
   return browser;
 }

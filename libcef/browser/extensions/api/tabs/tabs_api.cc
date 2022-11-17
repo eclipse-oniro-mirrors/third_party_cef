@@ -8,6 +8,7 @@
 
 #include "base/notreached.h"
 #include "base/strings/string_number_conversions.h"
+#include "base/strings/stringprintf.h"
 #include "chrome/browser/extensions/api/tabs/tabs_constants.h"
 #include "chrome/browser/extensions/extension_tab_util.h"
 #include "components/zoom/zoom_controller.h"
@@ -77,7 +78,7 @@ TabsCreateFunction::TabsCreateFunction() : cef_details_(this) {}
 
 ExtensionFunction::ResponseAction TabsCreateFunction::Run() {
   std::unique_ptr<tabs::Create::Params> params(
-      tabs::Create::Params::Create(*args_));
+      tabs::Create::Params::Create(args()));
   EXTENSION_FUNCTION_VALIDATE(params.get());
 
   CefExtensionFunctionDetails::OpenTabParams options;
@@ -118,7 +119,7 @@ content::WebContents* BaseAPIFunction::GetWebContents(int tab_id) {
 
 ExtensionFunction::ResponseAction TabsUpdateFunction::Run() {
   std::unique_ptr<tabs::Update::Params> params(
-      tabs::Update::Params::Create(*args_));
+      tabs::Update::Params::Create(args()));
   EXTENSION_FUNCTION_VALIDATE(params.get());
 
   tab_id_ = params->tab_id ? *params->tab_id : -1;
@@ -255,17 +256,26 @@ ExecuteCodeFunction::InitResult ExecuteCodeInTabFunction::Init() {
   if (init_result_)
     return init_result_.value();
 
-  // |tab_id| is optional so it's ok if it's not there.
-  int tab_id = -1;
-  if (args_->GetInteger(0, &tab_id) && tab_id < 0)
+  if (args().size() < 2)
     return set_init_result(VALIDATION_FAILURE);
 
+  const auto& tab_id_value = args()[0];
+  // |tab_id| is optional so it's ok if it's not there.
+  int tab_id = -1;
+  if (tab_id_value.is_int()) {
+    // But if it is present, it needs to be non-negative.
+    tab_id = tab_id_value.GetInt();
+    if (tab_id < 0) {
+      return set_init_result(VALIDATION_FAILURE);
+    }
+  }
+
   // |details| are not optional.
-  base::DictionaryValue* details_value = nullptr;
-  if (!args_->GetDictionary(1, &details_value))
+  const base::Value& details_value = args()[1];
+  if (!details_value.is_dict())
     return set_init_result(VALIDATION_FAILURE);
   std::unique_ptr<InjectDetails> details(new InjectDetails());
-  if (!InjectDetails::Populate(*details_value, details.get()))
+  if (!InjectDetails::Populate(details_value, details.get()))
     return set_init_result(VALIDATION_FAILURE);
 
   // Find a browser that we can access, or fail with error.
@@ -381,8 +391,16 @@ bool ExecuteCodeInTabFunction::LoadFile(const std::string& file,
 void ExecuteCodeInTabFunction::LoadFileComplete(
     const std::string& file,
     std::unique_ptr<std::string> data) {
+  std::vector<std::unique_ptr<std::string>> data_list;
+  absl::optional<std::string> error;
   const bool success = !!data.get();
-  DidLoadAndLocalizeFile(file, success, std::move(data));
+  if (success) {
+    DCHECK(data);
+    data_list.push_back(std::move(data));
+  } else {
+    error = base::StringPrintf("Failed to load file '%s'.", file.c_str());
+  }
+  DidLoadAndLocalizeFile(file, std::move(data_list), std::move(error));
 }
 
 bool TabsInsertCSSFunction::ShouldInsertCSS() const {
@@ -395,7 +413,7 @@ bool TabsRemoveCSSFunction::ShouldRemoveCSS() const {
 
 ExtensionFunction::ResponseAction TabsSetZoomFunction::Run() {
   std::unique_ptr<tabs::SetZoom::Params> params(
-      tabs::SetZoom::Params::Create(*args_));
+      tabs::SetZoom::Params::Create(args()));
   EXTENSION_FUNCTION_VALIDATE(params);
 
   int tab_id = params->tab_id ? *params->tab_id : -1;
@@ -425,7 +443,7 @@ ExtensionFunction::ResponseAction TabsSetZoomFunction::Run() {
 
 ExtensionFunction::ResponseAction TabsGetZoomFunction::Run() {
   std::unique_ptr<tabs::GetZoom::Params> params(
-      tabs::GetZoom::Params::Create(*args_));
+      tabs::GetZoom::Params::Create(args()));
   EXTENSION_FUNCTION_VALIDATE(params);
 
   int tab_id = params->tab_id ? *params->tab_id : -1;
@@ -444,7 +462,7 @@ ExtensionFunction::ResponseAction TabsSetZoomSettingsFunction::Run() {
   using api::tabs::ZoomSettings;
 
   std::unique_ptr<tabs::SetZoomSettings::Params> params(
-      tabs::SetZoomSettings::Params::Create(*args_));
+      tabs::SetZoomSettings::Params::Create(args()));
   EXTENSION_FUNCTION_VALIDATE(params);
 
   int tab_id = params->tab_id ? *params->tab_id : -1;
@@ -493,7 +511,7 @@ ExtensionFunction::ResponseAction TabsSetZoomSettingsFunction::Run() {
 
 ExtensionFunction::ResponseAction TabsGetZoomSettingsFunction::Run() {
   std::unique_ptr<tabs::GetZoomSettings::Params> params(
-      tabs::GetZoomSettings::Params::Create(*args_));
+      tabs::GetZoomSettings::Params::Create(args()));
   EXTENSION_FUNCTION_VALIDATE(params);
 
   int tab_id = params->tab_id ? *params->tab_id : -1;

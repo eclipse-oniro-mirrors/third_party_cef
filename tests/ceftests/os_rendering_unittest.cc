@@ -2,7 +2,7 @@
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 
-#include "include/base/cef_bind.h"
+#include "include/base/cef_callback.h"
 #include "include/base/cef_logging.h"
 #include "include/cef_parser.h"
 #include "include/cef_v8.h"
@@ -483,8 +483,8 @@ class OSRTestHandler : public RoutingTestHandler,
             EXPECT_EQ(kExpandedSelectRect.width, rect.width);
             EXPECT_EQ(kExpandedSelectRect.height, rect.height);
           } else {
-            EXPECT_GT(rect.width, kExpandedSelectRect.width);
-            EXPECT_GT(rect.height, kExpandedSelectRect.height);
+            EXPECT_GE(rect.width, kExpandedSelectRect.width);
+            EXPECT_GE(rect.height, kExpandedSelectRect.height);
           }
           DestroySucceededTestSoon();
           break;
@@ -548,7 +548,7 @@ class OSRTestHandler : public RoutingTestHandler,
       case OSR_TEST_FOCUS:
         if (StartTest()) {
           // body.onfocus will make LI00 red
-          browser->GetHost()->SendFocusEvent(true);
+          browser->GetHost()->SetFocus(true);
         }
         break;
       case OSR_TEST_TAKE_FOCUS:
@@ -566,7 +566,7 @@ class OSRTestHandler : public RoutingTestHandler,
         break;
       case OSR_TEST_GOT_FOCUS:
         if (StartTest()) {
-          browser->GetHost()->SendFocusEvent(true);
+          browser->GetHost()->SetFocus(true);
         }
         break;
       case OSR_TEST_CURSOR:
@@ -750,7 +750,7 @@ class OSRTestHandler : public RoutingTestHandler,
           ExpandDropDown();
           // Wait for the first popup paint to occur
         } else if (type == PET_POPUP) {
-          browser->GetHost()->SendFocusEvent(false);
+          browser->GetHost()->SetFocus(false);
         }
         break;
       case OSR_TEST_POPUP_HIDE_ON_ESC:
@@ -1385,25 +1385,22 @@ class OSRTestHandler : public RoutingTestHandler,
   }
 
   bool ExpectComputedPopupSize() const {
-#if defined(OS_WIN) || (defined(OS_POSIX) && !defined(OS_MAC))
-    // On Windows the device scale factor is ignored in Blink when computing
+    // The device scale factor is ignored in Blink when computing
     // the default form control font size (see https://crbug.com/674663#c11).
     // This results in better font size display but also means that we won't
     // get the expected (scaled) width/height value for non-1.0 scale factor
     // select popups.
-    // On both Windows and Linux the non-1.0 scale factor size is off by a few
-    // pixels so we can't perform an exact comparison.
+    // The non-1.0 scale factor size is off by a few pixels so we can't perform
+    // an exact comparison.
     return scale_factor_ == 1.0;
-#else
-    return true;
-#endif
   }
 
   void DestroySucceededTestSoon() {
     if (succeeded())
       return;
-    if (++event_count_ == event_total_)
-      CefPostTask(TID_UI, base::Bind(&OSRTestHandler::DestroyTest, this));
+    if (++event_count_ == event_total_) {
+      CefPostTask(TID_UI, base::BindOnce(&OSRTestHandler::DestroyTest, this));
+    }
   }
 
   void DestroyTest() override {
@@ -1425,7 +1422,7 @@ class OSRTestHandler : public RoutingTestHandler,
   }
 
   void ExpandDropDown() {
-    GetBrowser()->GetHost()->SendFocusEvent(true);
+    GetBrowser()->GetHost()->SetFocus(true);
     CefMouseEvent mouse_event;
 
     const CefRect& LI11select = GetElementBounds("LI11select");

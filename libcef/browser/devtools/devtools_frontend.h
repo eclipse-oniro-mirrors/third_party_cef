@@ -12,7 +12,6 @@
 
 #include "base/compiler_specific.h"
 #include "base/files/file_path.h"
-#include "base/macros.h"
 #include "base/memory/ref_counted.h"
 #include "base/memory/weak_ptr.h"
 #include "base/values.h"
@@ -41,6 +40,9 @@ enum class ProtocolMessageType {
 class CefDevToolsFrontend : public content::WebContentsObserver,
                             public content::DevToolsAgentHostClient {
  public:
+  CefDevToolsFrontend(const CefDevToolsFrontend&) = delete;
+  CefDevToolsFrontend& operator=(const CefDevToolsFrontend&) = delete;
+
   static CefDevToolsFrontend* Show(
       AlloyBrowserHostImpl* inspected_browser,
       const CefWindowInfo& windowInfo,
@@ -54,10 +56,13 @@ class CefDevToolsFrontend : public content::WebContentsObserver,
   void InspectElementAt(int x, int y);
   void Close();
 
-  void CallClientFunction(const std::string& function_name,
-                          const base::Value* arg1,
-                          const base::Value* arg2,
-                          const base::Value* arg3);
+  void CallClientFunction(
+      const std::string& object_name,
+      const std::string& method_name,
+      const base::Value arg1 = {},
+      const base::Value arg2 = {},
+      const base::Value arg3 = {},
+      base::OnceCallback<void(base::Value)> cb = base::NullCallback());
 
  private:
   CefDevToolsFrontend(AlloyBrowserHostImpl* frontend_browser,
@@ -70,7 +75,7 @@ class CefDevToolsFrontend : public content::WebContentsObserver,
   void AgentHostClosed(content::DevToolsAgentHost* agent_host) override;
   void DispatchProtocolMessage(content::DevToolsAgentHost* agent_host,
                                base::span<const uint8_t> message) override;
-  void HandleMessageFromDevToolsFrontend(const std::string& message);
+  void HandleMessageFromDevToolsFrontend(base::Value message);
 
  private:
   // WebContentsObserver overrides
@@ -80,7 +85,7 @@ class CefDevToolsFrontend : public content::WebContentsObserver,
       content::RenderFrameHost* render_frame_host) override;
   void WebContentsDestroyed() override;
 
-  void SendMessageAck(int request_id, const base::Value* arg1);
+  void SendMessageAck(int request_id, base::Value arg);
 
   bool ProtocolLoggingEnabled() const;
   void LogProtocolMessage(ProtocolMessageType type,
@@ -106,8 +111,6 @@ class CefDevToolsFrontend : public content::WebContentsObserver,
   const base::FilePath protocol_log_file_;
 
   base::WeakPtrFactory<CefDevToolsFrontend> weak_factory_;
-
-  DISALLOW_COPY_AND_ASSIGN(CefDevToolsFrontend);
 };
 
 #endif  // CEF_LIBCEF_BROWSER_DEVTOOLS_DEVTOOLS_FRONTEND_H_

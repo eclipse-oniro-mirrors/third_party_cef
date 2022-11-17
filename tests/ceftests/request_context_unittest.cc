@@ -2,7 +2,7 @@
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 
-#include "include/base/cef_bind.h"
+#include "include/base/cef_callback.h"
 #include "include/cef_request_context.h"
 #include "include/cef_request_context_handler.h"
 #include "include/wrapper/cef_closure_task.h"
@@ -321,10 +321,20 @@ class PopupTestHandler : public TestHandler {
       mouse_event.x = 20;
       mouse_event.y = 20;
       mouse_event.modifiers = 0;
-      browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_LEFT, false, 1);
-      browser->GetHost()->SendMouseClickEvent(mouse_event, MBT_LEFT, true, 1);
+
+      // Add some delay to avoid having events dropped or rate limited.
+      CefPostDelayedTask(
+          TID_UI,
+          base::BindOnce(&CefBrowserHost::SendMouseClickEvent,
+                         browser->GetHost(), mouse_event, MBT_LEFT, false, 1),
+          50);
+      CefPostDelayedTask(
+          TID_UI,
+          base::BindOnce(&CefBrowserHost::SendMouseClickEvent,
+                         browser->GetHost(), mouse_event, MBT_LEFT, true, 1),
+          100);
     } else {
-      EXPECT_TRUE(false);  // Not reached.
+      ADD_FAILURE();  // Not reached.
     }
   }
 
@@ -336,7 +346,7 @@ class PopupTestHandler : public TestHandler {
       ~TestVisitor() override {
         // Destroy the test.
         CefPostTask(TID_UI,
-                    base::Bind(&PopupTestHandler::DestroyTest, handler_));
+                    base::BindOnce(&PopupTestHandler::DestroyTest, handler_));
       }
 
       bool Visit(const CefCookie& cookie,
@@ -593,7 +603,8 @@ class PopupNavTestHandler : public TestHandler {
       if (mode_ == DENY) {
         // Wait a bit to make sure the popup window isn't created.
         CefPostDelayedTask(
-            TID_UI, base::Bind(&PopupNavTestHandler::DestroyTest, this), 200);
+            TID_UI, base::BindOnce(&PopupNavTestHandler::DestroyTest, this),
+            200);
       }
     } else if (url == kPopupNavPopupUrl) {
       EXPECT_FALSE(got_popup_load_end_);
@@ -644,7 +655,8 @@ class PopupNavTestHandler : public TestHandler {
     }
 
     if (destroy_test) {
-      CefPostTask(TID_UI, base::Bind(&PopupNavTestHandler::DestroyTest, this));
+      CefPostTask(TID_UI,
+                  base::BindOnce(&PopupNavTestHandler::DestroyTest, this));
     }
   }
 

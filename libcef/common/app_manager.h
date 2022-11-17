@@ -12,7 +12,6 @@
 #include "include/cef_request_context.h"
 
 #include "base/callback.h"
-#include "base/macros.h"
 #include "build/build_config.h"
 #include "content/public/common/content_client.h"
 
@@ -22,6 +21,9 @@ struct CefSchemeInfo;
 // Exposes global application state in the main and render processes.
 class CefAppManager {
  public:
+  CefAppManager(const CefAppManager&) = delete;
+  CefAppManager& operator=(const CefAppManager&) = delete;
+
   // Returns the singleton instance that is scoped to CEF lifespan.
   static CefAppManager* Get();
 
@@ -52,7 +54,7 @@ class CefAppManager {
       const CefRequestContextSettings& settings,
       base::OnceClosure initialized_cb) = 0;
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   // Returns the module name (usually libcef.dll).
   const wchar_t* GetResourceDllName();
 #endif
@@ -65,8 +67,6 @@ class CefAppManager {
   // Custom schemes handled by the client.
   SchemeInfoList scheme_info_list_;
   bool scheme_info_list_locked_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(CefAppManager);
 };
 
 #endif  // CEF_LIBCEF_COMMON_APP_MANAGER_H_

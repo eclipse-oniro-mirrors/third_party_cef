@@ -10,12 +10,18 @@
 #include "libcef/browser/web_contents_dialog_helper.h"
 
 #include "base/memory/weak_ptr.h"
+#include "components/find_in_page/find_notification_details.h"
 #include "content/public/browser/web_contents.h"
 #include "ui/gfx/geometry/size.h"
 
 // Implementation of Alloy-based browser functionality.
 class CefBrowserPlatformDelegateAlloy : public CefBrowserPlatformDelegate {
  public:
+  CefBrowserPlatformDelegateAlloy(const CefBrowserPlatformDelegateAlloy&) =
+      delete;
+  CefBrowserPlatformDelegateAlloy& operator=(
+      const CefBrowserPlatformDelegateAlloy&) = delete;
+
   content::WebContents* CreateWebContents(CefBrowserCreateParams& create_params,
                                           bool& own_web_contents) override;
   void WebContentsCreated(content::WebContents* web_contents,
@@ -27,7 +33,8 @@ class CefBrowserPlatformDelegateAlloy : public CefBrowserPlatformDelegate {
                       const gfx::Rect& initial_rect,
                       bool user_gesture,
                       bool* was_blocked) override;
-  bool ShouldTransferNavigation(bool is_main_frame_navigation) override;
+  bool ShouldAllowRendererInitiatedCrossProcessNavigation(
+      bool is_main_frame_navigation) override;
   void RenderViewCreated(content::RenderViewHost* render_view_host) override;
   void RenderViewReady() override;
   void BrowserCreated(CefBrowserHostBase* browser) override;
@@ -37,7 +44,7 @@ class CefBrowserPlatformDelegateAlloy : public CefBrowserPlatformDelegate {
   extensions::ExtensionHost* GetExtensionHost() const override;
   void BrowserDestroyed(CefBrowserHostBase* browser) override;
   void SendCaptureLostEvent() override;
-#if defined(OS_WIN) || (defined(OS_POSIX) && !defined(OS_MAC))
+#if BUILDFLAG(IS_WIN) || (BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC))
   void NotifyMoveOrResizeStarted() override;
 #endif
   bool PreHandleGestureEvent(content::WebContents* source,
@@ -52,23 +59,27 @@ class CefBrowserPlatformDelegateAlloy : public CefBrowserPlatformDelegate {
   void PrintToPDF(const CefString& path,
                   const CefPdfPrintSettings& settings,
                   CefRefPtr<CefPdfPrintCallback> callback) override;
-  void Find(int identifier,
-            const CefString& searchText,
+  void Find(const CefString& searchText,
             bool forward,
             bool matchCase,
             bool findNext) override;
   void StopFinding(bool clearSelection) override;
 
+  // Called from AlloyBrowserHostImpl::FindReply().
+  bool HandleFindReply(int request_id,
+                       int number_of_matches,
+                       const gfx::Rect& selection_rect,
+                       int active_match_ordinal,
+                       bool final_update);
+
+  const find_in_page::FindNotificationDetails& last_search_result() const {
+    return last_search_result_;
+  }
+
  protected:
   CefBrowserPlatformDelegateAlloy();
 
   base::RepeatingClosure GetBoundsChangedCallback();
-
-  // Returns the WebContents most likely to handle an action. If extensions are
-  // enabled and this browser has a full-page guest (for example, a full-page
-  // PDF viewer extension) then the guest's WebContents will be returned.
-  // Otherwise, the browser's WebContents will be returned.
-  content::WebContents* GetActionableWebContents() const;
 
   // Called from BrowserPlatformDelegateNative::set_windowless_handler().
   void set_as_secondary() { primary_ = false; }
@@ -90,8 +101,9 @@ class CefBrowserPlatformDelegateAlloy : public CefBrowserPlatformDelegate {
   // Used for the print preview dialog.
   std::unique_ptr<CefWebContentsDialogHelper> web_contents_dialog_helper_;
 
-  // Used to provide unique incremental IDs for each find request.
-  int find_request_id_counter_ = 0;
+  // The last find result. This object contains details about the number of
+  // matches, the find selection rectangle, etc.
+  find_in_page::FindNotificationDetails last_search_result_;
 
   // Used when the browser is hosting an extension.
   extensions::ExtensionHost* extension_host_ = nullptr;
@@ -107,8 +119,6 @@ class CefBrowserPlatformDelegateAlloy : public CefBrowserPlatformDelegate {
   bool primary_ = true;
 
   base::WeakPtrFactory<CefBrowserPlatformDelegateAlloy> weak_ptr_factory_;
-
-  DISALLOW_COPY_AND_ASSIGN(CefBrowserPlatformDelegateAlloy);
 };
 
 #endif  // CEF_LIBCEF_BROWSER_ALLOY_BROWSER_PLATFORM_DELEGATE_ALLOY_H_

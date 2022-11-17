@@ -12,7 +12,7 @@
 #include "base/compiler_specific.h"
 #include "base/files/file_path.h"
 #include "base/memory/ref_counted.h"
-#include "base/sequenced_task_runner_helpers.h"
+#include "base/task/sequenced_task_runner_helpers.h"
 #include "content/public/browser/browser_thread.h"
 #include "printing/print_dialog_gtk_interface.h"
 #include "printing/printing_context_linux.h"
@@ -30,6 +30,9 @@ class CefPrintDialogLinux : public printing::PrintDialogGtkInterface,
                                 CefPrintDialogLinux,
                                 content::BrowserThread::DeleteOnUIThread> {
  public:
+  CefPrintDialogLinux(const CefPrintDialogLinux&) = delete;
+  CefPrintDialogLinux& operator=(const CefPrintDialogLinux&) = delete;
+
   // Creates and returns a print dialog.
   static printing::PrintDialogGtkInterface* CreatePrintDialog(
       PrintingContextLinux* context);
@@ -90,8 +93,6 @@ class CefPrintDialogLinux : public printing::PrintDialogGtkInterface,
   CefRefPtr<CefBrowserHostBase> browser_;
 
   base::FilePath path_to_pdf_;
-
-  DISALLOW_COPY_AND_ASSIGN(CefPrintDialogLinux);
 };
 
 #endif  // LIBCEF_BROWSER_PRINTING_PRINT_DIALOG_LINUX_H_

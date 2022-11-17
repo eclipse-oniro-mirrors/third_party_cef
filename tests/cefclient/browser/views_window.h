@@ -18,12 +18,14 @@
 #include "include/views/cef_label_button.h"
 #include "include/views/cef_menu_button.h"
 #include "include/views/cef_menu_button_delegate.h"
+#include "include/views/cef_overlay_controller.h"
 #include "include/views/cef_textfield.h"
 #include "include/views/cef_textfield_delegate.h"
 #include "include/views/cef_window.h"
 #include "include/views/cef_window_delegate.h"
 #include "tests/cefclient/browser/image_cache.h"
 #include "tests/cefclient/browser/views_menu_bar.h"
+#include "tests/cefclient/browser/views_overlay_controls.h"
 
 namespace client {
 
@@ -78,7 +80,7 @@ class ViewsWindow : public CefBrowserViewDelegate,
     virtual void CreateExtensionWindow(CefRefPtr<CefExtension> extension,
                                        const CefRect& source_bounds,
                                        CefRefPtr<CefWindow> parent_window,
-                                       const base::Closure& close_callback) = 0;
+                                       base::OnceClosure close_callback) = 0;
 
     // Called to execute a test. See resource.h for |test_id| values.
     virtual void OnTest(int test_id) = 0;
@@ -124,57 +126,62 @@ class ViewsWindow : public CefBrowserViewDelegate,
       CefRefPtr<CefBrowserView> browser_view,
       const CefBrowserSettings& settings,
       CefRefPtr<CefClient> client,
-      bool is_devtools) OVERRIDE;
+      bool is_devtools) override;
   bool OnPopupBrowserViewCreated(CefRefPtr<CefBrowserView> browser_view,
                                  CefRefPtr<CefBrowserView> popup_browser_view,
-                                 bool is_devtools) OVERRIDE;
+                                 bool is_devtools) override;
   ChromeToolbarType GetChromeToolbarType() override;
 
   // CefButtonDelegate methods:
-  void OnButtonPressed(CefRefPtr<CefButton> button) OVERRIDE;
+  void OnButtonPressed(CefRefPtr<CefButton> button) override;
 
   // CefMenuButtonDelegate methods:
   void OnMenuButtonPressed(
       CefRefPtr<CefMenuButton> menu_button,
       const CefPoint& screen_point,
-      CefRefPtr<CefMenuButtonPressedLock> button_pressed_lock) OVERRIDE;
+      CefRefPtr<CefMenuButtonPressedLock> button_pressed_lock) override;
 
   // CefMenuModelDelegate methods:
   void ExecuteCommand(CefRefPtr<CefMenuModel> menu_model,
                       int command_id,
-                      cef_event_flags_t event_flags) OVERRIDE;
+                      cef_event_flags_t event_flags) override;
 
   // CefTextfieldDelegate methods:
   bool OnKeyEvent(CefRefPtr<CefTextfield> textfield,
-                  const CefKeyEvent& event) OVERRIDE;
+                  const CefKeyEvent& event) override;
 
   // CefWindowDelegate methods:
-  void OnWindowCreated(CefRefPtr<CefWindow> window) OVERRIDE;
-  void OnWindowDestroyed(CefRefPtr<CefWindow> window) OVERRIDE;
+  void OnWindowCreated(CefRefPtr<CefWindow> window) override;
+  void OnWindowDestroyed(CefRefPtr<CefWindow> window) override;
   CefRefPtr<CefWindow> GetParentWindow(CefRefPtr<CefWindow> window,
                                        bool* is_menu,
-                                       bool* can_activate_menu) OVERRIDE;
-  bool IsFrameless(CefRefPtr<CefWindow> window) OVERRIDE;
-  bool CanResize(CefRefPtr<CefWindow> window) OVERRIDE;
-  bool CanClose(CefRefPtr<CefWindow> window) OVERRIDE;
-  bool OnAccelerator(CefRefPtr<CefWindow> window, int command_id) OVERRIDE;
+                                       bool* can_activate_menu) override;
+  CefRect GetInitialBounds(CefRefPtr<CefWindow> window) override;
+  cef_show_state_t GetInitialShowState(CefRefPtr<CefWindow> window) override;
+  bool IsFrameless(CefRefPtr<CefWindow> window) override;
+  bool CanResize(CefRefPtr<CefWindow> window) override;
+  bool CanClose(CefRefPtr<CefWindow> window) override;
+  bool OnAccelerator(CefRefPtr<CefWindow> window, int command_id) override;
   bool OnKeyEvent(CefRefPtr<CefWindow> window,
-                  const CefKeyEvent& event) OVERRIDE;
+                  const CefKeyEvent& event) override;
 
   // CefViewDelegate methods:
-  CefSize GetMinimumSize(CefRefPtr<CefView> view) OVERRIDE;
-  void OnFocus(CefRefPtr<CefView> view) OVERRIDE;
-  void OnBlur(CefRefPtr<CefView> view) OVERRIDE;
-  void OnWindowChanged(CefRefPtr<CefView> view, bool added) OVERRIDE;
+  CefSize GetMinimumSize(CefRefPtr<CefView> view) override;
+  void OnFocus(CefRefPtr<CefView> view) override;
+  void OnBlur(CefRefPtr<CefView> view) override;
+  void OnWindowChanged(CefRefPtr<CefView> view, bool added) override;
+  void OnLayoutChanged(CefRefPtr<CefView> view,
+                       const CefRect& new_bounds) override;
 
   // ViewsMenuBar::Delegate methods:
   void MenuBarExecuteCommand(CefRefPtr<CefMenuModel> menu_model,
                              int command_id,
-                             cef_event_flags_t event_flags) OVERRIDE;
+                             cef_event_flags_t event_flags) override;
 
  private:
   // |delegate| is guaranteed to outlive this object.
-  // |browser_view| may be NULL, in which case SetBrowserView() will be called.
+  // |browser_view| may be nullptr, in which case SetBrowserView() will be
+  // called.
   ViewsWindow(Delegate* delegate, CefRefPtr<CefBrowserView> browser_view);
 
   void SetBrowserView(CefRefPtr<CefBrowserView> browser_view);
@@ -183,8 +190,13 @@ class ViewsWindow : public CefBrowserViewDelegate,
   void CreateMenuModel();
   CefRefPtr<CefLabelButton> CreateBrowseButton(const std::string& label,
                                                int id);
+  CefRefPtr<CefMenuButton> CreateMenuButton();
+  CefRefPtr<CefView> CreateLocationBar();
 
-  // Add controls to the Window.
+  // Add the BrowserView to the Window.
+  void AddBrowserView();
+
+  // Add other controls to the Window.
   void AddControls();
 
   // Add keyboard accelerators to the Window.
@@ -206,21 +218,28 @@ class ViewsWindow : public CefBrowserViewDelegate,
                               const ImageCache::ImageSet& images);
   void OnExtensionWindowClosed();
 
+  CefRect GetInitialBounds() const;
+
   Delegate* delegate_;  // Not owned by this object.
   CefRefPtr<CefBrowserView> browser_view_;
   bool frameless_;
   bool with_controls_;
+  bool with_overlay_controls_;
   ChromeToolbarType chrome_toolbar_type_;
   CefRefPtr<CefWindow> window_;
 
   CefRefPtr<CefMenuModel> button_menu_model_;
   CefRefPtr<ViewsMenuBar> top_menu_bar_;
   CefRefPtr<CefView> top_toolbar_;
-  CefRefPtr<CefView> location_;
+  CefRefPtr<CefMenuButton> menu_button_;
+  CefRefPtr<CefView> location_bar_;
   bool menu_has_focus_;
   int last_focused_view_;
 
   CefSize minimum_window_size_;
+  cef_show_state_t initial_show_state_ = CEF_SHOW_STATE_NORMAL;
+
+  CefRefPtr<ViewsOverlayControls> overlay_controls_;
 
   // Structure representing an extension.
   struct ExtensionInfo {

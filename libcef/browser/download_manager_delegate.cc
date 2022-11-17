@@ -4,6 +4,8 @@
 
 #include "libcef/browser/download_manager_delegate.h"
 
+#include <tuple>
+
 #include "include/cef_download_handler.h"
 #include "libcef/browser/alloy/alloy_browser_host_impl.h"
 #include "libcef/browser/context.h"
@@ -49,6 +51,10 @@ class CefBeforeDownloadCallbackImpl : public CefBeforeDownloadCallback {
         download_id_(download_id),
         suggested_name_(suggested_name),
         callback_(std::move(callback)) {}
+
+  CefBeforeDownloadCallbackImpl(const CefBeforeDownloadCallbackImpl&) = delete;
+  CefBeforeDownloadCallbackImpl& operator=(
+      const CefBeforeDownloadCallbackImpl&) = delete;
 
   void Continue(const CefString& download_path, bool show_dialog) override {
     if (CEF_CURRENTLY_ON_UIT()) {
@@ -153,7 +159,7 @@ class CefBeforeDownloadCallbackImpl : public CefBeforeDownloadCallback {
           suggested_path, DownloadItem::TARGET_DISPOSITION_OVERWRITE,
           download::DOWNLOAD_DANGER_TYPE_NOT_DANGEROUS,
           download::DownloadItem::MixedContentStatus::UNKNOWN, suggested_path,
-          base::nullopt /*download_schedule*/,
+          absl::nullopt /*download_schedule*/,
           download::DOWNLOAD_INTERRUPT_REASON_NONE);
     }
   }
@@ -172,7 +178,7 @@ class CefBeforeDownloadCallbackImpl : public CefBeforeDownloadCallback {
     std::move(callback).Run(path, DownloadItem::TARGET_DISPOSITION_OVERWRITE,
                             download::DOWNLOAD_DANGER_TYPE_NOT_DANGEROUS,
                             download::DownloadItem::MixedContentStatus::UNKNOWN,
-                            path, base::nullopt /*download_schedule*/,
+                            path, absl::nullopt /*download_schedule*/,
                             download::DOWNLOAD_INTERRUPT_REASON_NONE);
   }
 
@@ -182,7 +188,6 @@ class CefBeforeDownloadCallbackImpl : public CefBeforeDownloadCallback {
   content::DownloadTargetCallback callback_;
 
   IMPLEMENT_REFCOUNTING(CefBeforeDownloadCallbackImpl);
-  DISALLOW_COPY_AND_ASSIGN(CefBeforeDownloadCallbackImpl);
 };
 
 // CefDownloadItemCallback implementation.
@@ -193,19 +198,23 @@ class CefDownloadItemCallbackImpl : public CefDownloadItemCallback {
       uint32 download_id)
       : manager_(manager), download_id_(download_id) {}
 
+  CefDownloadItemCallbackImpl(const CefDownloadItemCallbackImpl&) = delete;
+  CefDownloadItemCallbackImpl& operator=(const CefDownloadItemCallbackImpl&) =
+      delete;
+
   void Cancel() override {
     CEF_POST_TASK(CEF_UIT,
-                  base::Bind(&CefDownloadItemCallbackImpl::DoCancel, this));
+                  base::BindOnce(&CefDownloadItemCallbackImpl::DoCancel, this));
   }
 
   void Pause() override {
     CEF_POST_TASK(CEF_UIT,
-                  base::Bind(&CefDownloadItemCallbackImpl::DoPause, this));
+                  base::BindOnce(&CefDownloadItemCallbackImpl::DoPause, this));
   }
 
   void Resume() override {
     CEF_POST_TASK(CEF_UIT,
-                  base::Bind(&CefDownloadItemCallbackImpl::DoResume, this));
+                  base::BindOnce(&CefDownloadItemCallbackImpl::DoResume, this));
   }
 
  private:
@@ -248,7 +257,6 @@ class CefDownloadItemCallbackImpl : public CefDownloadItemCallback {
   uint32 download_id_;
 
   IMPLEMENT_REFCOUNTING(CefDownloadItemCallbackImpl);
-  DISALLOW_COPY_AND_ASSIGN(CefDownloadItemCallbackImpl);
 };
 
 }  // namespace
@@ -289,7 +297,7 @@ void CefDownloadManagerDelegate::OnDownloadUpdated(DownloadItem* download) {
 
     handler->OnDownloadUpdated(browser.get(), download_item.get(), callback);
 
-    download_item->Detach(nullptr);
+    std::ignore = download_item->Detach(nullptr);
   }
 }
 
@@ -358,7 +366,7 @@ bool CefDownloadManagerDelegate::DetermineDownloadTarget(
         item->GetForcedFilePath(), DownloadItem::TARGET_DISPOSITION_OVERWRITE,
         download::DOWNLOAD_DANGER_TYPE_NOT_DANGEROUS,
         download::DownloadItem::MixedContentStatus::UNKNOWN,
-        item->GetForcedFilePath(), base::nullopt /*download_schedule*/,
+        item->GetForcedFilePath(), absl::nullopt /*download_schedule*/,
         download::DOWNLOAD_INTERRUPT_REASON_NONE);
     return true;
   }
@@ -384,7 +392,7 @@ bool CefDownloadManagerDelegate::DetermineDownloadTarget(
     handler->OnBeforeDownload(browser.get(), download_item.get(),
                               suggested_name.value(), callbackObj);
 
-    download_item->Detach(nullptr);
+    std::ignore = download_item->Detach(nullptr);
   }
 
   return true;
