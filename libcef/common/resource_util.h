@@ -8,7 +8,7 @@
 
 #include "include/cef_base.h"
 
-#include "ui/base/resource/scale_factor.h"
+#include "ui/base/resource/resource_scale_factor.h"
 
 namespace base {
 class CommandLine;
@@ -30,9 +30,9 @@ void OverrideUserDataDir(CefSettings* settings,
                          const base::CommandLine* command_line);
 
 // Returns true if |scale_factor| is supported by this platform.
-bool IsScaleFactorSupported(ui::ScaleFactor scale_factor);
+bool IsScaleFactorSupported(ui::ResourceScaleFactor scale_factor);
 
-#if defined(OS_LINUX)
+#if BUILDFLAG(IS_LINUX)
 // Look for binary files (*.bin, *.dat, *.pak, chrome-sandbox, libGLESv2.so,
 // libEGL.so, locales/*.pak, swiftshader/*.so) next to libcef instead of the exe
 // on Linux. This is already the default on Windows.

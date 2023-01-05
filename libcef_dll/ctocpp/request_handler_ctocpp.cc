@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,14 +9,14 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=cac9a84a4ddb5aa01e9c6fc97f5c4bcb4f4c368f$
+// $hash=be460a1bbdf46dd4e317b39981878b3993675884$
 //
 
 #include "libcef_dll/ctocpp/request_handler_ctocpp.h"
 #include "libcef_dll/cpptoc/auth_callback_cpptoc.h"
 #include "libcef_dll/cpptoc/browser_cpptoc.h"
+#include "libcef_dll/cpptoc/callback_cpptoc.h"
 #include "libcef_dll/cpptoc/frame_cpptoc.h"
-#include "libcef_dll/cpptoc/request_callback_cpptoc.h"
 #include "libcef_dll/cpptoc/request_cpptoc.h"
 #include "libcef_dll/cpptoc/select_client_certificate_callback_cpptoc.h"
 #include "libcef_dll/cpptoc/sslinfo_cpptoc.h"
@@ -100,14 +100,15 @@ bool CefRequestHandlerCToCpp::OnOpenURLFromTab(
 }
 
 NO_SANITIZE("cfi-icall")
-CefRefPtr<CefResourceRequestHandler> CefRequestHandlerCToCpp::
-    GetResourceRequestHandler(CefRefPtr<CefBrowser> browser,
-                              CefRefPtr<CefFrame> frame,
-                              CefRefPtr<CefRequest> request,
-                              bool is_navigation,
-                              bool is_download,
-                              const CefString& request_initiator,
-                              bool& disable_default_handling) {
+CefRefPtr<CefResourceRequestHandler>
+CefRequestHandlerCToCpp::GetResourceRequestHandler(
+    CefRefPtr<CefBrowser> browser,
+    CefRefPtr<CefFrame> frame,
+    CefRefPtr<CefRequest> request,
+    bool is_navigation,
+    bool is_download,
+    const CefString& request_initiator,
+    bool& disable_default_handling) {
   shutdown_checker::AssertNotShutdown();
 
   cef_request_handler_t* _struct = GetStruct();
@@ -194,11 +195,10 @@ bool CefRequestHandlerCToCpp::GetAuthCredentials(
 }
 
 NO_SANITIZE("cfi-icall")
-bool CefRequestHandlerCToCpp::OnQuotaRequest(
-    CefRefPtr<CefBrowser> browser,
-    const CefString& origin_url,
-    int64 new_size,
-    CefRefPtr<CefRequestCallback> callback) {
+bool CefRequestHandlerCToCpp::OnQuotaRequest(CefRefPtr<CefBrowser> browser,
+                                             const CefString& origin_url,
+                                             int64 new_size,
+                                             CefRefPtr<CefCallback> callback) {
   shutdown_checker::AssertNotShutdown();
 
   cef_request_handler_t* _struct = GetStruct();
@@ -223,7 +223,7 @@ bool CefRequestHandlerCToCpp::OnQuotaRequest(
   // Execute
   int _retval = _struct->on_quota_request(
       _struct, CefBrowserCppToC::Wrap(browser), origin_url.GetStruct(),
-      new_size, CefRequestCallbackCppToC::Wrap(callback));
+      new_size, CefCallbackCppToC::Wrap(callback));
 
   // Return type: bool
   return _retval ? true : false;
@@ -235,7 +235,7 @@ bool CefRequestHandlerCToCpp::OnCertificateError(
     cef_errorcode_t cert_error,
     const CefString& request_url,
     CefRefPtr<CefSSLInfo> ssl_info,
-    CefRefPtr<CefRequestCallback> callback) {
+    CefRefPtr<CefCallback> callback) {
   shutdown_checker::AssertNotShutdown();
 
   cef_request_handler_t* _struct = GetStruct();
@@ -265,7 +265,7 @@ bool CefRequestHandlerCToCpp::OnCertificateError(
   int _retval = _struct->on_certificate_error(
       _struct, CefBrowserCppToC::Wrap(browser), cert_error,
       request_url.GetStruct(), CefSSLInfoCppToC::Wrap(ssl_info),
-      CefRequestCallbackCppToC::Wrap(callback));
+      CefCallbackCppToC::Wrap(callback));
 
   // Return type: bool
   return _retval ? true : false;

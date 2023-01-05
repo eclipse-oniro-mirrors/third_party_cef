@@ -8,18 +8,22 @@
 
 #include <memory>
 
-#include "base/macros.h"
 #include "base/memory/scoped_refptr.h"
-#include "base/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "chrome/renderer/chrome_content_renderer_client.h"
 
-class CefBrowserManager;
-class CefRenderThreadObserver;
+class CefRenderManager;
 
 // CEF override of ChromeContentRendererClient.
 class ChromeContentRendererClientCef : public ChromeContentRendererClient {
  public:
   ChromeContentRendererClientCef();
+
+  ChromeContentRendererClientCef(const ChromeContentRendererClientCef&) =
+      delete;
+  ChromeContentRendererClientCef& operator=(
+      const ChromeContentRendererClientCef&) = delete;
+
   ~ChromeContentRendererClientCef() override;
 
   // Render thread task runner.
@@ -35,17 +39,15 @@ class ChromeContentRendererClientCef : public ChromeContentRendererClient {
   void RenderThreadStarted() override;
   void RenderThreadConnected() override;
   void RenderFrameCreated(content::RenderFrame* render_frame) override;
-  void RenderViewCreated(content::RenderView* render_view) override;
+  void WebViewCreated(blink::WebView* web_view) override;
   void DevToolsAgentAttached() override;
   void DevToolsAgentDetached() override;
+  void ExposeInterfacesToBrowser(mojo::BinderMap* binders) override;
 
  private:
-  std::unique_ptr<CefBrowserManager> browser_manager_;
+  std::unique_ptr<CefRenderManager> render_manager_;
 
   scoped_refptr<base::SingleThreadTaskRunner> render_task_runner_;
-  std::unique_ptr<CefRenderThreadObserver> observer_;
-
-  DISALLOW_COPY_AND_ASSIGN(ChromeContentRendererClientCef);
 };
 
 #endif  // CEF_LIBCEF_RENDERER_CHROME_CHROME_CONTENT_RENDERER_CLIENT_CEF_

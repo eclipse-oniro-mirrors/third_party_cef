@@ -7,17 +7,19 @@
 
 #include "include/internal/cef_types_wrappers.h"
 #include "libcef/browser/browser_context.h"
+#include "libcef/browser/extensions/api/file_system/cef_file_system_delegate.h"
 #include "libcef/browser/extensions/api/storage/sync_value_store_cache.h"
 #include "libcef/browser/extensions/extension_web_contents_observer.h"
 #include "libcef/browser/extensions/mime_handler_view_guest_delegate.h"
-#include "libcef/browser/extensions/pdf_web_contents_helper_client.h"
 #include "libcef/browser/printing/print_view_manager.h"
 
 #include "base/memory/ptr_util.h"
+#include "chrome/browser/ui/pdf/chrome_pdf_web_contents_helper_client.h"
 #include "chrome/browser/ui/prefs/prefs_tab_helper.h"
 #include "components/pdf/browser/pdf_web_contents_helper.h"
 #include "components/zoom/zoom_controller.h"
 #include "extensions/browser/guest_view/extensions_guest_view_manager_delegate.h"
+#include "printing/mojom/print.mojom.h"
 
 namespace extensions {
 
@@ -51,12 +53,10 @@ void CefExtensionsAPIClient::AttachWebContentsHelpers(
   PrefsTabHelper::CreateForWebContents(web_contents);
   printing::CefPrintViewManager::CreateForWebContents(web_contents);
 
-  CefExtensionWebContentsObserver::CreateForWebContents(web_contents);
-
   // Used by the PDF extension.
   pdf::PDFWebContentsHelper::CreateForWebContentsWithClient(
       web_contents, std::unique_ptr<pdf::PDFWebContentsHelperClient>(
-                        new CefPDFWebContentsHelperClient()));
+                        new ChromePDFWebContentsHelperClient()));
 
   // Used by the tabs extension API.
   zoom::ZoomController::CreateForWebContents(web_contents);
@@ -64,7 +64,7 @@ void CefExtensionsAPIClient::AttachWebContentsHelpers(
 
 void CefExtensionsAPIClient::AddAdditionalValueStoreCaches(
     content::BrowserContext* context,
-    const scoped_refptr<ValueStoreFactory>& factory,
+    const scoped_refptr<value_store::ValueStoreFactory>& factory,
     const scoped_refptr<base::ObserverListThreadSafe<SettingsObserver>>&
         observers,
     std::map<settings_namespace::Namespace, ValueStoreCache*>* caches) {
@@ -73,6 +73,12 @@ void CefExtensionsAPIClient::AddAdditionalValueStoreCaches(
   // chrome.storage.sync as if Chrome were permanently offline, by using a local
   // store see: https://developer.chrome.com/apps/storage for more information
   (*caches)[settings_namespace::SYNC] = new cef::SyncValueStoreCache(factory);
+}
+
+FileSystemDelegate* CefExtensionsAPIClient::GetFileSystemDelegate() {
+  if (!file_system_delegate_)
+    file_system_delegate_ = std::make_unique<cef::CefFileSystemDelegate>();
+  return file_system_delegate_.get();
 }
 
 }  // namespace extensions

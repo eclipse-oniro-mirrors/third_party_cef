@@ -12,12 +12,19 @@
 #include "libcef/browser/net_service/cookie_manager_impl.h"
 #include "libcef/browser/thread_util.h"
 
+namespace content {
+struct GlobalRenderFrameHostId;
+}
+
 class CefBrowserContext;
 
 // Implementation of the CefRequestContext interface. All methods are thread-
 // safe unless otherwise indicated. Will be deleted on the UI thread.
 class CefRequestContextImpl : public CefRequestContext {
  public:
+  CefRequestContextImpl(const CefRequestContextImpl&) = delete;
+  CefRequestContextImpl& operator=(const CefRequestContextImpl&) = delete;
+
   ~CefRequestContextImpl() override;
 
   // Creates the singleton global RequestContext. Called from
@@ -64,7 +71,6 @@ class CefRequestContextImpl : public CefRequestContext {
       const CefString& domain_name,
       CefRefPtr<CefSchemeHandlerFactory> factory) override;
   bool ClearSchemeHandlerFactories() override;
-  void PurgePluginListCache(bool reload_pages) override;
   bool HasPreference(const CefString& name) override;
   CefRefPtr<CefValue> GetPreference(const CefString& name) override;
   CefRefPtr<CefDictionaryValue> GetAllPreferences(
@@ -95,18 +101,14 @@ class CefRequestContextImpl : public CefRequestContext {
   // Called from CefBrowserContentsDelegate::RenderFrameCreated or
   // CefMimeHandlerViewGuestDelegate::OnGuestAttached when a render frame is
   // created.
-  void OnRenderFrameCreated(int render_process_id,
-                            int render_frame_id,
-                            int frame_tree_node_id,
+  void OnRenderFrameCreated(const content::GlobalRenderFrameHostId& global_id,
                             bool is_main_frame,
                             bool is_guest_view);
 
   // Called from CefBrowserContentsDelegate::RenderFrameDeleted or
   // CefMimeHandlerViewGuestDelegate::OnGuestDetached when a render frame is
   // deleted.
-  void OnRenderFrameDeleted(int render_process_id,
-                            int render_frame_id,
-                            int frame_tree_node_id,
+  void OnRenderFrameDeleted(const content::GlobalRenderFrameHostId& global_id,
                             bool is_main_frame,
                             bool is_guest_view);
 
@@ -144,9 +146,6 @@ class CefRequestContextImpl : public CefRequestContext {
   // Make sure the browser context exists. Only called on the UI thread.
   void EnsureBrowserContext();
 
-  void PurgePluginListCacheInternal(
-      bool reload_pages,
-      CefBrowserContext::Getter browser_context_getter);
   void ClearCertificateExceptionsInternal(
       CefRefPtr<CefCompletionCallback> callback,
       CefBrowserContext::Getter browser_context_getter);
@@ -174,7 +173,6 @@ class CefRequestContextImpl : public CefRequestContext {
   Config config_;
 
   IMPLEMENT_REFCOUNTING_DELETE_ON_UIT(CefRequestContextImpl);
-  DISALLOW_COPY_AND_ASSIGN(CefRequestContextImpl);
 };
 
 #endif  // CEF_LIBCEF_REQUEST_CONTEXT_IMPL_H_

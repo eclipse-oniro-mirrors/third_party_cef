@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=7a6d2ca91509c2e6c510d5c9585a74c2fe10499b$
+// $hash=394bf2a5f6f5898787c498b91bcf8375099eae47$
 //
 
 #include "libcef_dll/ctocpp/views/view_delegate_ctocpp.h"
@@ -187,6 +187,26 @@ void CefViewDelegateCToCpp::OnWindowChanged(CefRefPtr<CefView> view,
 
   // Execute
   _struct->on_window_changed(_struct, CefViewCppToC::Wrap(view), added);
+}
+
+NO_SANITIZE("cfi-icall")
+void CefViewDelegateCToCpp::OnLayoutChanged(CefRefPtr<CefView> view,
+                                            const CefRect& new_bounds) {
+  shutdown_checker::AssertNotShutdown();
+
+  cef_view_delegate_t* _struct = GetStruct();
+  if (CEF_MEMBER_MISSING(_struct, on_layout_changed))
+    return;
+
+  // AUTO-GENERATED CONTENT - DELETE THIS COMMENT BEFORE MODIFYING
+
+  // Verify param: view; type: refptr_diff
+  DCHECK(view.get());
+  if (!view.get())
+    return;
+
+  // Execute
+  _struct->on_layout_changed(_struct, CefViewCppToC::Wrap(view), &new_bounds);
 }
 
 NO_SANITIZE("cfi-icall")

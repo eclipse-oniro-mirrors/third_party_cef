@@ -7,10 +7,8 @@
 #pragma once
 
 #include "include/base/cef_logging.h"
-#include "include/base/cef_macros.h"
 #include "include/capi/cef_base_capi.h"
 #include "include/cef_base.h"
-#include "libcef_dll/ptr_util.h"
 #include "libcef_dll/wrapper_types.h"
 
 // Wrap a C++ class with a C structure. This is used when the class
@@ -19,6 +17,9 @@
 template <class ClassName, class BaseName, class StructName>
 class CefCppToCScoped : public CefBaseScoped {
  public:
+  CefCppToCScoped(const CefCppToCScoped&) = delete;
+  CefCppToCScoped& operator=(const CefCppToCScoped&) = delete;
+
   // Create a new wrapper instance and associated structure reference for
   // passing an object instance the other side. The wrapper object will be
   // deleted when |del| is called on the associated structure. The wrapped
@@ -221,8 +222,6 @@ class CefCppToCScoped : public CefBaseScoped {
   bool owned_;
 
   static CefWrapperType kWrapperType;
-
-  DISALLOW_COPY_AND_ASSIGN(CefCppToCScoped);
 };
 
 #endif  // CEF_LIBCEF_DLL_CPPTOC_CPPTOC_SCOPED_H_

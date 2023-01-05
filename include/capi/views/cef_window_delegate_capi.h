@@ -1,4 +1,4 @@
-// Copyright (c) 2021 Marshall A. Greenblatt. All rights reserved.
+// Copyright (c) 2022 Marshall A. Greenblatt. All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -33,7 +33,7 @@
 // by hand. See the translator.README.txt file in the tools directory for
 // more information.
 //
-// $hash=b43e6106fde84f3bab4dd566efab23a50adaf94d$
+// $hash=cd5d7c4e83237ceb39c5639489ca6004d2d69f0c$
 //
 
 #ifndef CEF_INCLUDE_CAPI_VIEWS_CEF_WINDOW_DELEGATE_CAPI_H_
@@ -96,6 +96,13 @@ typedef struct _cef_window_delegate_t {
   // previous window bounds.
   ///
   cef_rect_t(CEF_CALLBACK* get_initial_bounds)(
+      struct _cef_window_delegate_t* self,
+      struct _cef_window_t* window);
+
+  ///
+  // Return the initial show state for |window|.
+  ///
+  cef_show_state_t(CEF_CALLBACK* get_initial_show_state)(
       struct _cef_window_delegate_t* self,
       struct _cef_window_t* window);
 

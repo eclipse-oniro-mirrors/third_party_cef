@@ -9,14 +9,19 @@
 
 #include "libcef/browser/request_context_impl.h"
 
-#include "base/macros.h"
-#include "base/single_thread_task_runner.h"
+#include "base/task/single_thread_task_runner.h"
 #include "chrome/browser/chrome_browser_main_extra_parts.h"
 
 // Wrapper that owns and initialize the browser memory-related extra parts.
 class ChromeBrowserMainExtraPartsCef : public ChromeBrowserMainExtraParts {
  public:
   ChromeBrowserMainExtraPartsCef();
+
+  ChromeBrowserMainExtraPartsCef(const ChromeBrowserMainExtraPartsCef&) =
+      delete;
+  ChromeBrowserMainExtraPartsCef& operator=(
+      const ChromeBrowserMainExtraPartsCef&) = delete;
+
   ~ChromeBrowserMainExtraPartsCef() override;
 
   CefRefPtr<CefRequestContextImpl> request_context() const {
@@ -36,7 +41,7 @@ class ChromeBrowserMainExtraPartsCef : public ChromeBrowserMainExtraParts {
 
  private:
   // ChromeBrowserMainExtraParts overrides.
-  void PostProfileInit() override;
+  void PostProfileInit(Profile* profile, bool is_initial_profile) override;
   void PreMainMessageLoopRun() override;
 
   CefRefPtr<CefRequestContextImpl> global_request_context_;
@@ -47,8 +52,6 @@ class ChromeBrowserMainExtraPartsCef : public ChromeBrowserMainExtraParts {
   scoped_refptr<base::SingleThreadTaskRunner> background_task_runner_;
   scoped_refptr<base::SingleThreadTaskRunner> user_visible_task_runner_;
   scoped_refptr<base::SingleThreadTaskRunner> user_blocking_task_runner_;
-
-  DISALLOW_COPY_AND_ASSIGN(ChromeBrowserMainExtraPartsCef);
 };
 
 #endif  // CEF_LIBCEF_BROWSER_CHROME_CHROME_BROWSER_MAIN_EXTRA_PARTS_CEF_H_

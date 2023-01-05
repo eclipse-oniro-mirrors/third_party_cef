@@ -7,7 +7,9 @@
 #include "libcef/browser/browser_host_base.h"
 #include "libcef/browser/browser_platform_delegate.h"
 #include "libcef/browser/browser_util.h"
+#include "libcef/common/frame_util.h"
 
+#include "content/public/browser/focused_node_details.h"
 #include "content/public/browser/keyboard_event_processing_result.h"
 #include "content/public/browser/native_web_keyboard_event.h"
 #include "content/public/browser/navigation_entry.h"
@@ -16,7 +18,10 @@
 #include "content/public/browser/notification_source.h"
 #include "content/public/browser/notification_types.h"
 #include "content/public/browser/render_view_host.h"
+#include "content/public/browser/render_widget_host.h"
+#include "content/public/browser/render_widget_host_view.h"
 #include "third_party/blink/public/mojom/favicon/favicon_url.mojom.h"
+#include "third_party/blink/public/mojom/input/focus_type.mojom-blink.h"
 
 using content::KeyboardEventProcessingResult;
 
@@ -42,11 +47,11 @@ void CefBrowserContentsDelegate::ObserveWebContents(
                     content::Source<content::NavigationController>(
                         &new_contents->GetController()));
 
-    // Make sure RenderFrameCreated is called at least one time.
+    // Make sure MaybeCreateFrame is called at least one time.
     // Create the frame representation before OnAfterCreated is called for a new
-    // browser. Additionally, RenderFrameCreated is otherwise not called at all
-    // for new popup browsers.
-    RenderFrameCreated(new_contents->GetMainFrame());
+    // browser.
+    browser_info_->MaybeCreateFrame(new_contents->GetMainFrame(),
+                                    false /* is_guest_view */);
   } else {
     registrar_.reset();
   }
@@ -86,7 +91,7 @@ content::WebContents* CefBrowserContentsDelegate::OpenURLFromTab(
 
 void CefBrowserContentsDelegate::LoadingStateChanged(
     content::WebContents* source,
-    bool to_different_document) {
+    bool should_show_loading_ui) {
   const int current_index =
       source->GetController().GetLastCommittedEntryIndex();
   const int max_index = source->GetController().GetEntryCount() - 1;
@@ -158,7 +163,7 @@ bool CefBrowserContentsDelegate::DidAddMessageToConsole(
   return false;
 }
 
-void CefBrowserContentsDelegate::DidNavigateMainFramePostCommit(
+void CefBrowserContentsDelegate::DidNavigatePrimaryMainFramePostCommit(
     content::WebContents* web_contents) {
   has_document_ = false;
   OnStateChanged(State::kDocument);
@@ -232,17 +237,17 @@ bool CefBrowserContentsDelegate::HandleKeyboardEvent(
 void CefBrowserContentsDelegate::RenderFrameCreated(
     content::RenderFrameHost* render_frame_host) {
   browser_info_->MaybeCreateFrame(render_frame_host, false /* is_guest_view */);
-
   if (render_frame_host->GetParent() == nullptr) {
-    // May be already registered if the renderer crashed previously.
     auto render_view_host = render_frame_host->GetRenderViewHost();
-    if (!registrar_->IsRegistered(
-            this, content::NOTIFICATION_FOCUS_CHANGED_IN_PAGE,
-            content::Source<content::RenderViewHost>(render_view_host))) {
-      registrar_->Add(
-          this, content::NOTIFICATION_FOCUS_CHANGED_IN_PAGE,
-          content::Source<content::RenderViewHost>(render_view_host));
+    auto base_background_color = platform_delegate()->GetBackgroundColor();
+    if (browser_info_ && browser_info_->is_popup()) {
+      // force reset page base background color because popup window won't get
+      // the page base background from web_contents at the creation time
+      web_contents()->SetPageBaseBackgroundColor(SkColor());
+      web_contents()->SetPageBaseBackgroundColor(base_background_color);
     }
+    render_view_host->GetWidget()->GetView()->SetBackgroundColor(
+        base_background_color);
   }
 }
 
@@ -253,25 +258,22 @@ void CefBrowserContentsDelegate::RenderFrameHostChanged(
   RenderFrameCreated(new_host);
 }
 
+void CefBrowserContentsDelegate::RenderFrameHostStateChanged(
+    content::RenderFrameHost* host,
+    content::RenderFrameHost::LifecycleState old_state,
+    content::RenderFrameHost::LifecycleState new_state) {
+  browser_info_->FrameHostStateChanged(host, old_state, new_state);
+}
+
 void CefBrowserContentsDelegate::RenderFrameDeleted(
     content::RenderFrameHost* render_frame_host) {
-  const auto frame_id = CefFrameHostImpl::MakeFrameId(render_frame_host);
+  const auto frame_id =
+      frame_util::MakeFrameId(render_frame_host->GetGlobalId());
   browser_info_->RemoveFrame(render_frame_host);
 
   if (focused_frame_ && focused_frame_->GetIdentifier() == frame_id) {
     focused_frame_ = nullptr;
     OnStateChanged(State::kFocusedFrame);
-  }
-}
-
-void CefBrowserContentsDelegate::RenderViewDeleted(
-    content::RenderViewHost* render_view_host) {
-  if (registrar_->IsRegistered(
-          this, content::NOTIFICATION_FOCUS_CHANGED_IN_PAGE,
-          content::Source<content::RenderViewHost>(render_view_host))) {
-    registrar_->Remove(
-        this, content::NOTIFICATION_FOCUS_CHANGED_IN_PAGE,
-        content::Source<content::RenderViewHost>(render_view_host));
   }
 }
 
@@ -283,7 +285,7 @@ void CefBrowserContentsDelegate::RenderViewReady() {
   }
 }
 
-void CefBrowserContentsDelegate::RenderProcessGone(
+void CefBrowserContentsDelegate::PrimaryMainFrameRenderProcessGone(
     base::TerminationStatus status) {
   cef_termination_status_t ts = TS_ABNORMAL_TERMINATION;
   if (status == base::TERMINATION_STATUS_PROCESS_WAS_KILLED)
@@ -372,21 +374,25 @@ void CefBrowserContentsDelegate::DidFinishNavigation(
     return;
 
   const bool is_main_frame = navigation_handle->IsInMainFrame();
+  const auto global_id = frame_util::GetGlobalId(navigation_handle);
   const GURL& url =
       (error_code == net::OK ? navigation_handle->GetURL() : GURL());
 
   auto browser_info = browser_info_;
+  if (!browser_info->browser()) {
+    // Ignore notifications when the browser is closing.
+    return;
+  }
 
   // May return NULL when starting a new navigation if the previous navigation
   // caused the renderer process to crash during load.
-  CefRefPtr<CefFrameHostImpl> frame = browser_info->GetFrameForFrameTreeNode(
-      navigation_handle->GetFrameTreeNodeId());
+  CefRefPtr<CefFrameHostImpl> frame =
+      browser_info->GetFrameForGlobalId(global_id);
   if (!frame) {
     if (is_main_frame) {
       frame = browser_info->GetMainFrame();
     } else {
-      frame =
-          browser_info->CreateTempSubFrame(CefFrameHostImpl::kInvalidFrameId);
+      frame = browser_info->CreateTempSubFrame(frame_util::InvalidGlobalId());
     }
   }
   frame->RefreshAttributes();
@@ -424,18 +430,6 @@ void CefBrowserContentsDelegate::DidFailLoad(
   frame->RefreshAttributes();
   OnLoadError(frame, validated_url, error_code);
   OnLoadEnd(frame, validated_url, error_code);
-}
-
-bool CefBrowserContentsDelegate::OnMessageReceived(
-    const IPC::Message& message,
-    content::RenderFrameHost* render_frame_host) {
-  // Messages may arrive after a frame is detached. Ignore those messages.
-  auto frame = browser_info_->GetFrameForHost(render_frame_host);
-  if (frame) {
-    return static_cast<CefFrameHostImpl*>(frame.get())
-        ->OnMessageReceived(message);
-  }
-  return false;
 }
 
 void CefBrowserContentsDelegate::TitleWasSet(content::NavigationEntry* entry) {
@@ -484,6 +478,13 @@ void CefBrowserContentsDelegate::OnWebContentsFocused(
   }
 }
 
+void CefBrowserContentsDelegate::OnFocusChangedInPage(
+    content::FocusedNodeDetails* details) {
+  focus_on_editable_field_ =
+      details->focus_type != blink::mojom::blink::FocusType::kNone &&
+      details->is_editable_node;
+}
+
 void CefBrowserContentsDelegate::WebContentsDestroyed() {
   auto wc = web_contents();
   ObserveWebContents(nullptr);
@@ -496,15 +497,10 @@ void CefBrowserContentsDelegate::Observe(
     int type,
     const content::NotificationSource& source,
     const content::NotificationDetails& details) {
-  DCHECK(type == content::NOTIFICATION_LOAD_STOP ||
-         type == content::NOTIFICATION_FOCUS_CHANGED_IN_PAGE);
+  DCHECK_EQ(type, content::NOTIFICATION_LOAD_STOP);
 
   if (type == content::NOTIFICATION_LOAD_STOP) {
-    content::NavigationController* controller =
-        content::Source<content::NavigationController>(source).ptr();
-    OnTitleChange(controller->GetWebContents()->GetTitle());
-  } else if (type == content::NOTIFICATION_FOCUS_CHANGED_IN_PAGE) {
-    focus_on_editable_field_ = *content::Details<bool>(details).ptr();
+    OnTitleChange(web_contents()->GetTitle());
   }
 }
 

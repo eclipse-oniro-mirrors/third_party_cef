@@ -12,6 +12,7 @@
 #include "libcef/browser/views/view_view.h"
 
 #include "base/logging.h"
+#include "ui/views/animation/ink_drop.h"
 #include "ui/views/controls/button/button.h"
 
 // Helpers for template boiler-plate.
@@ -25,7 +26,7 @@
 // basic_label_button_view.h). See comments in view_impl.h for a usage overview.
 CEF_BUTTON_VIEW_T class CefButtonView : public CEF_VIEW_VIEW_D {
  public:
-  typedef CEF_VIEW_VIEW_D ParentClass;
+  using ParentClass = CEF_VIEW_VIEW_D;
 
   // |cef_delegate| may be nullptr.
   template <typename... Args>
@@ -59,15 +60,16 @@ CEF_BUTTON_VIEW_T void CEF_BUTTON_VIEW_D::ButtonPressed(
   // Callback may trigger new animation state.
   if (ParentClass::cef_delegate())
     ParentClass::cef_delegate()->OnButtonPressed(GetCefButton());
-  if (ParentClass::ink_drop_mode() != views::Button::InkDropMode::OFF &&
+  if (views::InkDrop::Get(this)->ink_drop_mode() !=
+          views::InkDropHost::InkDropMode::OFF &&
       !ParentClass::IsFocusable() &&
       ParentClass::GetState() != views::Button::STATE_PRESSED) {
     // Ink drop state does not get reset properly on click when the button is
     // non-focusable. Reset the ink drop state here if the state has not been
     // explicitly set to pressed by the OnButtonPressed callback calling
     // SetState (which also sets the ink drop state).
-    ParentClass::AnimateInkDrop(views::InkDropState::HIDDEN,
-                                ui::LocatedEvent::FromIfValid(&event));
+    views::InkDrop::Get(this)->AnimateToState(
+        views::InkDropState::HIDDEN, ui::LocatedEvent::FromIfValid(&event));
   }
 }
 

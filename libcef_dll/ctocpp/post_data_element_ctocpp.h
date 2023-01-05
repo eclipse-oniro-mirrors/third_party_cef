@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=6ba7cc0530f7160b93a18d692512755b3fcb633b$
+// $hash=7f8d7ce807aae88cd94eb0bf8fed88208b052dce$
 //
 
 #ifndef CEF_LIBCEF_DLL_CTOCPP_POST_DATA_ELEMENT_CTOCPP_H_
@@ -35,14 +35,14 @@ class CefPostDataElementCToCpp
   virtual ~CefPostDataElementCToCpp();
 
   // CefPostDataElement methods.
-  bool IsReadOnly() OVERRIDE;
-  void SetToEmpty() OVERRIDE;
-  void SetToFile(const CefString& fileName) OVERRIDE;
-  void SetToBytes(size_t size, const void* bytes) OVERRIDE;
-  Type GetType() OVERRIDE;
-  CefString GetFile() OVERRIDE;
-  size_t GetBytesCount() OVERRIDE;
-  size_t GetBytes(size_t size, void* bytes) OVERRIDE;
+  bool IsReadOnly() override;
+  void SetToEmpty() override;
+  void SetToFile(const CefString& fileName) override;
+  void SetToBytes(size_t size, const void* bytes) override;
+  Type GetType() override;
+  CefString GetFile() override;
+  size_t GetBytesCount() override;
+  size_t GetBytes(size_t size, void* bytes) override;
 };
 
 #endif  // CEF_LIBCEF_DLL_CTOCPP_POST_DATA_ELEMENT_CTOCPP_H_

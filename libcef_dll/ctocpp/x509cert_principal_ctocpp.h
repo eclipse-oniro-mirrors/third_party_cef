@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=4bf290893db30f92b41162cf2cd47457f94b9940$
+// $hash=5462ba22f05a8e8a05aac6cac9d23004767049db$
 //
 
 #ifndef CEF_LIBCEF_DLL_CTOCPP_X509CERT_PRINCIPAL_CTOCPP_H_
@@ -36,15 +36,15 @@ class CefX509CertPrincipalCToCpp
   virtual ~CefX509CertPrincipalCToCpp();
 
   // CefX509CertPrincipal methods.
-  CefString GetDisplayName() OVERRIDE;
-  CefString GetCommonName() OVERRIDE;
-  CefString GetLocalityName() OVERRIDE;
-  CefString GetStateOrProvinceName() OVERRIDE;
-  CefString GetCountryName() OVERRIDE;
-  void GetStreetAddresses(std::vector<CefString>& addresses) OVERRIDE;
-  void GetOrganizationNames(std::vector<CefString>& names) OVERRIDE;
-  void GetOrganizationUnitNames(std::vector<CefString>& names) OVERRIDE;
-  void GetDomainComponents(std::vector<CefString>& components) OVERRIDE;
+  CefString GetDisplayName() override;
+  CefString GetCommonName() override;
+  CefString GetLocalityName() override;
+  CefString GetStateOrProvinceName() override;
+  CefString GetCountryName() override;
+  void GetStreetAddresses(std::vector<CefString>& addresses) override;
+  void GetOrganizationNames(std::vector<CefString>& names) override;
+  void GetOrganizationUnitNames(std::vector<CefString>& names) override;
+  void GetDomainComponents(std::vector<CefString>& components) override;
 };
 
 #endif  // CEF_LIBCEF_DLL_CTOCPP_X509CERT_PRINCIPAL_CTOCPP_H_

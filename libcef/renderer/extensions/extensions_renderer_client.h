@@ -8,7 +8,6 @@
 #include <memory>
 #include <string>
 
-#include "base/macros.h"
 #include "extensions/renderer/extensions_renderer_client.h"
 #include "services/service_manager/public/cpp/binder_registry.h"
 #include "ui/base/page_transition_types.h"
@@ -32,6 +31,10 @@ class RenderFrame;
 struct WebPluginInfo;
 }  // namespace content
 
+namespace guest_view {
+class GuestViewContainerDispatcher;
+}
+
 namespace url {
 class Origin;
 }
@@ -40,12 +43,16 @@ namespace extensions {
 
 class Dispatcher;
 class DispatcherDelegate;
-class ExtensionsGuestViewContainerDispatcher;
 class ResourceRequestPolicy;
 
 class CefExtensionsRendererClient : public ExtensionsRendererClient {
  public:
   CefExtensionsRendererClient();
+
+  CefExtensionsRendererClient(const CefExtensionsRendererClient&) = delete;
+  CefExtensionsRendererClient& operator=(const CefExtensionsRendererClient&) =
+      delete;
+
   ~CefExtensionsRendererClient() override;
 
   // ExtensionsRendererClient implementation.
@@ -75,15 +82,11 @@ class CefExtensionsRendererClient : public ExtensionsRendererClient {
   void RunScriptsAtDocumentEnd(content::RenderFrame* render_frame);
   void RunScriptsAtDocumentIdle(content::RenderFrame* render_frame);
 
-  static bool IsStandaloneExtensionProcess();
-
  private:
   std::unique_ptr<extensions::Dispatcher> extension_dispatcher_;
-  std::unique_ptr<extensions::ExtensionsGuestViewContainerDispatcher>
+  std::unique_ptr<guest_view::GuestViewContainerDispatcher>
       guest_view_container_dispatcher_;
   std::unique_ptr<extensions::ResourceRequestPolicy> resource_request_policy_;
-
-  DISALLOW_COPY_AND_ASSIGN(CefExtensionsRendererClient);
 };
 
 }  // namespace extensions

@@ -9,7 +9,7 @@
 #include "libcef/common/app_manager.h"
 
 #include "ui/base/cursor/mojom/cursor_type.mojom.h"
-#include "ui/base/cursor/win/win_cursor.h"
+#include "ui/base/win/win_cursor.h"
 #include "ui/resources/grit/ui_unscaled_resources.h"
 
 namespace cursor_util {
@@ -156,8 +156,8 @@ cef_cursor_handle_t GetPlatformCursor(ui::mojom::CursorType type) {
   return LoadCursor(module_handle, cursor_id);
 }
 
-cef_cursor_handle_t ToCursorHandle(ui::PlatformCursor cursor) {
-  return static_cast<ui::WinCursor*>(cursor)->hcursor();
+cef_cursor_handle_t ToCursorHandle(scoped_refptr<ui::PlatformCursor> cursor) {
+  return ui::WinCursor::FromPlatformCursor(cursor)->hcursor();
 }
 
 }  // namespace cursor_util

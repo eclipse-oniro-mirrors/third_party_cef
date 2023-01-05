@@ -22,6 +22,9 @@
 #include "chrome/browser/profiles/profile.h"
 #include "components/language/core/browser/pref_names.h"
 #include "components/prefs/pref_service.h"
+#include "content/browser/renderer_host/frame_tree_node.h"
+#include "content/browser/renderer_host/render_frame_host_impl.h"
+#include "content/browser/storage_partition_impl.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
@@ -40,12 +43,15 @@ namespace {
 const int kLoadNoCookiesFlags =
     net::LOAD_DO_NOT_SEND_COOKIES | net::LOAD_DO_NOT_SAVE_COOKIES;
 
-class RequestCallbackWrapper : public CefRequestCallback {
+class RequestCallbackWrapper : public CefCallback {
  public:
   using Callback = base::OnceCallback<void(bool /* allow */)>;
   explicit RequestCallbackWrapper(Callback callback)
       : callback_(std::move(callback)),
         work_thread_task_runner_(base::SequencedTaskRunnerHandle::Get()) {}
+
+  RequestCallbackWrapper(const RequestCallbackWrapper&) = delete;
+  RequestCallbackWrapper& operator=(const RequestCallbackWrapper&) = delete;
 
   ~RequestCallbackWrapper() override {
     if (!callback_.is_null()) {
@@ -55,11 +61,16 @@ class RequestCallbackWrapper : public CefRequestCallback {
     }
   }
 
-  void Continue(bool allow) override {
+  void Continue() override { ContinueNow(true); }
+
+  void Cancel() override { ContinueNow(false); }
+
+ private:
+  void ContinueNow(bool allow) {
     if (!work_thread_task_runner_->RunsTasksInCurrentSequence()) {
       work_thread_task_runner_->PostTask(
           FROM_HERE,
-          base::BindOnce(&RequestCallbackWrapper::Continue, this, allow));
+          base::BindOnce(&RequestCallbackWrapper::ContinueNow, this, allow));
       return;
     }
     if (!callback_.is_null()) {
@@ -67,15 +78,11 @@ class RequestCallbackWrapper : public CefRequestCallback {
     }
   }
 
-  void Cancel() override { Continue(false); }
-
- private:
   Callback callback_;
 
   scoped_refptr<base::SequencedTaskRunner> work_thread_task_runner_;
 
   IMPLEMENT_REFCOUNTING(RequestCallbackWrapper);
-  DISALLOW_COPY_AND_ASSIGN(RequestCallbackWrapper);
 };
 
 class InterceptedRequestHandlerWrapper : public InterceptedRequestHandler {
@@ -152,6 +159,9 @@ class InterceptedRequestHandlerWrapper : public InterceptedRequestHandler {
       }
     }
 
+    DestructionObserver(const DestructionObserver&) = delete;
+    DestructionObserver& operator=(const DestructionObserver&) = delete;
+
     virtual ~DestructionObserver() {
       CEF_REQUIRE_UIT();
       if (!registered_)
@@ -205,7 +215,6 @@ class InterceptedRequestHandlerWrapper : public InterceptedRequestHandler {
     bool registered_ = true;
 
     base::WeakPtr<InterceptedRequestHandlerWrapper> wrapper_;
-    DISALLOW_COPY_AND_ASSIGN(DestructionObserver);
   };
 
   // Holds state information for InterceptedRequestHandlerWrapper. State is
@@ -228,18 +237,16 @@ class InterceptedRequestHandlerWrapper : public InterceptedRequestHandler {
     void Initialize(content::BrowserContext* browser_context,
                     CefRefPtr<CefBrowserHostBase> browser,
                     CefRefPtr<CefFrame> frame,
-                    int render_process_id,
-                    int frame_tree_node_id,
+                    const content::GlobalRenderFrameHostId& global_id,
                     bool is_navigation,
                     bool is_download,
                     const url::Origin& request_initiator,
-                    const base::Closure& unhandled_request_callback) {
+                    const base::RepeatingClosure& unhandled_request_callback) {
       CEF_REQUIRE_UIT();
-
-      browser_context_ = browser_context;
 
       auto profile = Profile::FromBrowserContext(browser_context);
       auto cef_browser_context = CefBrowserContext::FromProfile(profile);
+      browser_context_getter_ = cef_browser_context->getter();
       iothread_state_ = cef_browser_context->iothread_state();
       CHECK(iothread_state_);
       cookieable_schemes_ = cef_browser_context->GetCookieableSchemes();
@@ -256,8 +263,7 @@ class InterceptedRequestHandlerWrapper : public InterceptedRequestHandler {
         frame_ = frame;
       }
 
-      render_process_id_ = render_process_id;
-      frame_tree_node_id_ = frame_tree_node_id;
+      global_id_ = global_id;
       is_navigation_ = is_navigation;
       is_download_ = is_download;
       request_initiator_ = request_initiator.Serialize();
@@ -284,7 +290,7 @@ class InterceptedRequestHandlerWrapper : public InterceptedRequestHandler {
         std::unique_ptr<DestructionObserver> observer) {}
 
     // Only accessed on the UI thread.
-    content::BrowserContext* browser_context_ = nullptr;
+    CefBrowserContext::Getter browser_context_getter_;
 
     bool initialized_ = false;
 
@@ -292,16 +298,21 @@ class InterceptedRequestHandlerWrapper : public InterceptedRequestHandler {
     CefRefPtr<CefFrame> frame_;
     scoped_refptr<CefIOThreadState> iothread_state_;
     CefBrowserContext::CookieableSchemes cookieable_schemes_;
-    int render_process_id_ = 0;
-    int frame_tree_node_id_ = -1;
+    content::GlobalRenderFrameHostId global_id_;
     bool is_navigation_ = true;
     bool is_download_ = false;
     CefString request_initiator_;
-    base::Closure unhandled_request_callback_;
+    base::RepeatingClosure unhandled_request_callback_;
 
     // Default values for standard headers.
     std::string accept_language_;
     std::string user_agent_;
+
+    // Used to route authentication and certificate callbacks through the
+    // associated StoragePartition instance.
+    mojo::PendingRemote<network::mojom::URLLoaderNetworkServiceObserver>
+        url_loader_network_observer_;
+    bool did_try_create_url_loader_network_observer_ = false;
 
     // Used to receive destruction notification.
     std::unique_ptr<DestructionObserver> destruction_observer_;
@@ -314,6 +325,9 @@ class InterceptedRequestHandlerWrapper : public InterceptedRequestHandler {
    public:
     explicit InitHelper(InterceptedRequestHandlerWrapper* wrapper)
         : wrapper_(wrapper) {}
+
+    InitHelper(const InitHelper&) = delete;
+    InitHelper& operator=(const InitHelper&) = delete;
 
     void MaybeSetInitialized(std::unique_ptr<InitState> init_state) {
       CEF_POST_TASK(CEF_IOT, base::BindOnce(&InitHelper::SetInitialized, this,
@@ -343,6 +357,11 @@ class InterceptedRequestHandlerWrapper : public InterceptedRequestHandler {
   InterceptedRequestHandlerWrapper()
       : init_helper_(base::MakeRefCounted<InitHelper>(this)),
         weak_ptr_factory_(this) {}
+
+  InterceptedRequestHandlerWrapper(const InterceptedRequestHandlerWrapper&) =
+      delete;
+  InterceptedRequestHandlerWrapper& operator=(
+      const InterceptedRequestHandlerWrapper&) = delete;
 
   ~InterceptedRequestHandlerWrapper() override {
     CEF_REQUIRE_IOT();
@@ -387,6 +406,59 @@ class InterceptedRequestHandlerWrapper : public InterceptedRequestHandler {
     }
   }
 
+  static void TryCreateURLLoaderNetworkObserver(
+      std::unique_ptr<PendingRequest> pending_request,
+      CefRefPtr<CefFrame> frame,
+      const CefBrowserContext::Getter& browser_context_getter,
+      base::WeakPtr<InterceptedRequestHandlerWrapper> self) {
+    CEF_REQUIRE_UIT();
+
+    mojo::PendingRemote<network::mojom::URLLoaderNetworkServiceObserver>
+        url_loader_network_observer;
+
+    if (frame) {
+      // The request will be associated with this frame/browser if it's valid,
+      // otherwise the request will be canceled.
+      content::RenderFrameHost* rfh =
+          static_cast<CefFrameHostImpl*>(frame.get())->GetRenderFrameHost();
+      if (rfh) {
+        url_loader_network_observer =
+            static_cast<content::RenderFrameHostImpl*>(rfh)
+                ->CreateURLLoaderNetworkObserver();
+      }
+    } else {
+      auto cef_browser_context = browser_context_getter.Run();
+      auto browser_context = cef_browser_context
+                                 ? cef_browser_context->AsBrowserContext()
+                                 : nullptr;
+      if (browser_context) {
+        url_loader_network_observer =
+            static_cast<content::StoragePartitionImpl*>(
+                browser_context->GetDefaultStoragePartition())
+                ->CreateAuthCertObserverForServiceWorker();
+      }
+    }
+
+    CEF_POST_TASK(CEF_IOT,
+                  base::BindOnce(&InterceptedRequestHandlerWrapper::
+                                     ContinueCreateURLLoaderNetworkObserver,
+                                 self, std::move(pending_request),
+                                 std::move(url_loader_network_observer)));
+  }
+
+  void ContinueCreateURLLoaderNetworkObserver(
+      std::unique_ptr<PendingRequest> pending_request,
+      mojo::PendingRemote<network::mojom::URLLoaderNetworkServiceObserver>
+          url_loader_network_observer) {
+    CEF_REQUIRE_IOT();
+
+    DCHECK(!init_state_->did_try_create_url_loader_network_observer_);
+    init_state_->did_try_create_url_loader_network_observer_ = true;
+    init_state_->url_loader_network_observer_ =
+        std::move(url_loader_network_observer);
+    pending_request->Run(this);
+  }
+
   // InterceptedRequestHandler methods:
   void OnBeforeRequest(int32_t request_id,
                        network::ResourceRequest* request,
@@ -409,8 +481,37 @@ class InterceptedRequestHandlerWrapper : public InterceptedRequestHandler {
       return;
     }
 
+    if (request->trusted_params &&
+        !request->trusted_params->url_loader_network_observer &&
+        !init_state_->did_try_create_url_loader_network_observer_) {
+      // Restarted/redirected requests won't already have an observer, so we
+      // need to create one.
+      CEF_POST_TASK(
+          CEF_UIT,
+          base::BindOnce(&InterceptedRequestHandlerWrapper::
+                             TryCreateURLLoaderNetworkObserver,
+                         std::make_unique<PendingRequest>(
+                             request_id, request, request_was_redirected,
+                             std::move(callback), std::move(cancel_callback)),
+                         init_state_->frame_,
+                         init_state_->browser_context_getter_,
+                         weak_ptr_factory_.GetWeakPtr()));
+      return;
+    }
+
     // State may already exist for restarted requests.
     RequestState* state = GetOrCreateState(request_id);
+
+    if (init_state_->did_try_create_url_loader_network_observer_) {
+      if (init_state_->url_loader_network_observer_) {
+        request->trusted_params->url_loader_network_observer =
+            std::move(init_state_->url_loader_network_observer_);
+      }
+
+      // Reset state so that the observer will be recreated on the next
+      // restart/redirect.
+      init_state_->did_try_create_url_loader_network_observer_ = false;
+    }
 
     // Add standard headers, if currently unspecified.
     request->headers.SetHeaderIfMissing(
@@ -487,7 +588,7 @@ class InterceptedRequestHandlerWrapper : public InterceptedRequestHandler {
         &InterceptedRequestHandlerWrapper::ContinueWithLoadedCookies,
         weak_ptr_factory_.GetWeakPtr(), request_id, request,
         std::move(callback));
-    cookie_helper::LoadCookies(init_state_->browser_context_, *request,
+    cookie_helper::LoadCookies(init_state_->browser_context_getter_, *request,
                                allow_cookie_callback,
                                std::move(done_cookie_callback));
   }
@@ -586,8 +687,13 @@ class InterceptedRequestHandlerWrapper : public InterceptedRequestHandler {
           init_state_->browser_, init_state_->frame_,
           state->pending_request_.get(), callbackPtr.get());
       if (retval != RV_CONTINUE_ASYNC) {
-        // Continue or cancel the request immediately.
-        callbackPtr->Continue(retval == RV_CONTINUE);
+        if (retval == RV_CONTINUE) {
+          // Continue the request immediately.
+          callbackPtr->Continue();
+        } else {
+          // Cancel the request immediately.
+          callbackPtr->Cancel();
+        }
       }
     } else {
       // The scheme factory may choose to handle it.
@@ -705,7 +811,7 @@ class InterceptedRequestHandlerWrapper : public InterceptedRequestHandler {
   void OnRequestResponse(int32_t request_id,
                          network::ResourceRequest* request,
                          net::HttpResponseHeaders* headers,
-                         base::Optional<net::RedirectInfo> redirect_info,
+                         absl::optional<net::RedirectInfo> redirect_info,
                          OnRequestResponseResultCallback callback) override {
     CEF_REQUIRE_IOT();
 
@@ -860,8 +966,8 @@ class InterceptedRequestHandlerWrapper : public InterceptedRequestHandler {
     auto done_cookie_callback = base::BindOnce(
         &InterceptedRequestHandlerWrapper::ContinueWithSavedCookies,
         weak_ptr_factory_.GetWeakPtr(), request_id, std::move(callback));
-    cookie_helper::SaveCookies(init_state_->browser_context_, *request, headers,
-                               allow_cookie_callback,
+    cookie_helper::SaveCookies(init_state_->browser_context_getter_, *request,
+                               headers, allow_cookie_callback,
                                std::move(done_cookie_callback));
   }
 
@@ -1052,8 +1158,7 @@ class InterceptedRequestHandlerWrapper : public InterceptedRequestHandler {
       // Maybe the request context wants to handle it?
       CefRefPtr<CefRequestContextHandler> context_handler =
           init_state_->iothread_state_->GetHandler(
-              init_state_->render_process_id_, MSG_ROUTING_NONE,
-              init_state_->frame_tree_node_id_, /*require_frame_match=*/false);
+              init_state_->global_id_, /*require_frame_match=*/false);
       if (context_handler) {
         if (!requestPtr)
           requestPtr = MakeRequest(request, request_id, true);
@@ -1170,30 +1275,63 @@ class InterceptedRequestHandlerWrapper : public InterceptedRequestHandler {
   PendingRequests pending_requests_;
 
   base::WeakPtrFactory<InterceptedRequestHandlerWrapper> weak_ptr_factory_;
-
-  DISALLOW_COPY_AND_ASSIGN(InterceptedRequestHandlerWrapper);
 };
 
-void InitOnUIThread(
-    scoped_refptr<InterceptedRequestHandlerWrapper::InitHelper> init_helper,
+}  // namespace
+
+std::unique_ptr<InterceptedRequestHandler> CreateInterceptedRequestHandler(
+    content::BrowserContext* browser_context,
+    content::RenderFrameHost* frame,
+    int render_process_id,
+    bool is_navigation,
+    bool is_download,
+    const url::Origin& request_initiator) {
+  CEF_REQUIRE_UIT();
+  CHECK(browser_context);
+
+  CefRefPtr<CefBrowserHostBase> browserPtr;
+  CefRefPtr<CefFrame> framePtr;
+
+  // Default to handlers for the same process in case |frame| doesn't have an
+  // associated CefBrowserHost.
+  content::GlobalRenderFrameHostId global_id(render_process_id,
+                                             MSG_ROUTING_NONE);
+
+  // |frame| may be nullptr for service worker requests.
+  if (frame) {
+    // May return nullptr for requests originating from guest views.
+    browserPtr = CefBrowserHostBase::GetBrowserForHost(frame);
+    if (browserPtr) {
+      framePtr = browserPtr->GetFrameForHost(frame);
+      CHECK(framePtr);
+      global_id = frame->GetGlobalId();
+    }
+  }
+
+  auto init_state =
+      std::make_unique<InterceptedRequestHandlerWrapper::InitState>();
+  init_state->Initialize(browser_context, browserPtr, framePtr, global_id,
+                         is_navigation, is_download, request_initiator,
+                         base::RepeatingClosure());
+
+  auto wrapper = std::make_unique<InterceptedRequestHandlerWrapper>();
+  wrapper->init_helper()->MaybeSetInitialized(std::move(init_state));
+
+  return wrapper;
+}
+
+std::unique_ptr<InterceptedRequestHandler> CreateInterceptedRequestHandler(
     content::WebContents::Getter web_contents_getter,
     int frame_tree_node_id,
     const network::ResourceRequest& request,
-    const base::Closure& unhandled_request_callback) {
+    const base::RepeatingClosure& unhandled_request_callback) {
   CEF_REQUIRE_UIT();
 
-  // May return nullptr if the WebContents was destroyed while this callback was
-  // in-flight.
   content::WebContents* web_contents = web_contents_getter.Run();
-  if (!web_contents) {
-    return;
-  }
+  CHECK(web_contents);
 
   content::BrowserContext* browser_context = web_contents->GetBrowserContext();
-  DCHECK(browser_context);
-
-  const int render_process_id =
-      web_contents->GetRenderViewHost()->GetProcess()->GetID();
+  CHECK(browser_context);
 
   content::RenderFrameHost* frame = nullptr;
 
@@ -1201,33 +1339,41 @@ void InitOnUIThread(
       static_cast<blink::mojom::ResourceType>(request.resource_type) ==
           blink::mojom::ResourceType::kMainFrame) {
     frame = web_contents->GetMainFrame();
-    DCHECK(frame);
+    CHECK(frame);
   } else {
-    if (frame_tree_node_id >= 0) {
-      // May return null for frames in inner WebContents.
-      frame = web_contents->FindFrameByFrameTreeNodeId(frame_tree_node_id,
-                                                       render_process_id);
+    // May return nullptr for frames in inner WebContents.
+    auto node = content::FrameTreeNode::GloballyFindByID(frame_tree_node_id);
+    if (node) {
+      frame = node->current_frame_host();
+
+      // RFHs can move between FrameTreeNodes. Make sure this one hasn't. See
+      // documentation on RenderFrameHost::GetFrameTreeNodeId() for background.
+      if (content::WebContents::FromRenderFrameHost(frame) != web_contents) {
+        frame = nullptr;
+      }
     }
+
     if (!frame) {
       // Use the main frame for the CefBrowserHost.
       frame = web_contents->GetMainFrame();
-      DCHECK(frame);
+      CHECK(frame);
     }
   }
 
   CefRefPtr<CefBrowserHostBase> browserPtr;
   CefRefPtr<CefFrame> framePtr;
 
-  // |frame| may be null for service worker requests.
-  if (frame) {
-    // May return nullptr for requests originating from guest views.
-    browserPtr = CefBrowserHostBase::GetBrowserForHost(frame);
-    if (browserPtr) {
-      framePtr = browserPtr->GetFrameForHost(frame);
-      if (frame_tree_node_id < 0)
-        frame_tree_node_id = frame->GetFrameTreeNodeId();
-      DCHECK(framePtr);
-    }
+  // Default to handlers for the same process in case |frame| doesn't have an
+  // associated CefBrowserHost.
+  content::GlobalRenderFrameHostId global_id(frame->GetProcess()->GetID(),
+                                             MSG_ROUTING_NONE);
+
+  // May return nullptr for requests originating from guest views.
+  browserPtr = CefBrowserHostBase::GetBrowserForHost(frame);
+  if (browserPtr) {
+    framePtr = browserPtr->GetFrameForHost(frame);
+    DCHECK(framePtr);
+    global_id = frame->GetGlobalId();
   }
 
   const bool is_navigation = ui::PageTransitionIsNewNavigation(
@@ -1240,61 +1386,13 @@ void InitOnUIThread(
 
   auto init_state =
       std::make_unique<InterceptedRequestHandlerWrapper::InitState>();
-  init_state->Initialize(browser_context, browserPtr, framePtr,
-                         render_process_id, frame_tree_node_id, is_navigation,
-                         is_download, request_initiator,
+  init_state->Initialize(browser_context, browserPtr, framePtr, global_id,
+                         is_navigation, is_download, request_initiator,
                          unhandled_request_callback);
-
-  init_helper->MaybeSetInitialized(std::move(init_state));
-}
-
-}  // namespace
-
-std::unique_ptr<InterceptedRequestHandler> CreateInterceptedRequestHandler(
-    content::BrowserContext* browser_context,
-    content::RenderFrameHost* frame,
-    int render_process_id,
-    bool is_navigation,
-    bool is_download,
-    const url::Origin& request_initiator) {
-  CEF_REQUIRE_UIT();
-  CefRefPtr<CefBrowserHostBase> browserPtr;
-  CefRefPtr<CefFrame> framePtr;
-  int frame_tree_node_id = -1;
-
-  // |frame| may be null for service worker requests.
-  if (frame) {
-    frame_tree_node_id = frame->GetFrameTreeNodeId();
-
-    // May return nullptr for requests originating from guest views.
-    browserPtr = CefBrowserHostBase::GetBrowserForHost(frame);
-    if (browserPtr) {
-      framePtr = browserPtr->GetFrameForHost(frame);
-      DCHECK(framePtr);
-    }
-  }
-
-  auto init_state =
-      std::make_unique<InterceptedRequestHandlerWrapper::InitState>();
-  init_state->Initialize(browser_context, browserPtr, framePtr,
-                         render_process_id, frame_tree_node_id, is_navigation,
-                         is_download, request_initiator, base::Closure());
 
   auto wrapper = std::make_unique<InterceptedRequestHandlerWrapper>();
   wrapper->init_helper()->MaybeSetInitialized(std::move(init_state));
 
-  return wrapper;
-}
-
-std::unique_ptr<InterceptedRequestHandler> CreateInterceptedRequestHandler(
-    content::WebContents::Getter web_contents_getter,
-    int frame_tree_node_id,
-    const network::ResourceRequest& request,
-    const base::Closure& unhandled_request_callback) {
-  auto wrapper = std::make_unique<InterceptedRequestHandlerWrapper>();
-  CEF_POST_TASK(CEF_UIT, base::BindOnce(InitOnUIThread, wrapper->init_helper(),
-                                        web_contents_getter, frame_tree_node_id,
-                                        request, unhandled_request_callback));
   return wrapper;
 }
 

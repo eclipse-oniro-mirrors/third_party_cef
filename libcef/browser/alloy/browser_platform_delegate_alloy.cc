@@ -17,13 +17,18 @@
 
 #include "base/logging.h"
 #include "chrome/browser/printing/print_view_manager.h"
+#include "chrome/browser/printing/print_view_manager_common.h"
 #include "chrome/browser/ui/prefs/prefs_tab_helper.h"
+#include "components/find_in_page/find_tab_helper.h"
+#include "components/find_in_page/find_types.h"
 #include "components/zoom/zoom_controller.h"
 #include "content/browser/renderer_host/render_widget_host_impl.h"
 #include "content/browser/web_contents/web_contents_impl.h"
 #include "content/public/browser/render_view_host.h"
 #include "content/public/browser/render_widget_host.h"
 #include "extensions/browser/process_manager.h"
+#include "pdf/pdf_features.h"
+#include "printing/mojom/print.mojom.h"
 #include "third_party/blink/public/mojom/frame/find_in_page.mojom.h"
 
 namespace {
@@ -107,6 +112,7 @@ void CefBrowserPlatformDelegateAlloy::WebContentsCreated(
     content::WebContents* web_contents,
     bool owned) {
   CefBrowserPlatformDelegate::WebContentsCreated(web_contents, owned);
+  find_in_page::FindTabHelper::CreateForWebContents(web_contents);
 
   if (owned) {
     SetOwnedWebContents(web_contents);
@@ -141,10 +147,12 @@ void CefBrowserPlatformDelegateAlloy::AddNewContents(
   }
 }
 
-bool CefBrowserPlatformDelegateAlloy::ShouldTransferNavigation(
-    bool is_main_frame_navigation) {
+bool CefBrowserPlatformDelegateAlloy::
+    ShouldAllowRendererInitiatedCrossProcessNavigation(
+        bool is_main_frame_navigation) {
   if (extension_host_) {
-    return extension_host_->ShouldTransferNavigation(is_main_frame_navigation);
+    return extension_host_->ShouldAllowRendererInitiatedCrossProcessNavigation(
+        is_main_frame_navigation);
   }
   return true;
 }
@@ -176,9 +184,6 @@ void CefBrowserPlatformDelegateAlloy::BrowserCreated(
   printing::CefPrintViewManager::CreateForWebContents(web_contents_);
 
   if (extensions::ExtensionsEnabled()) {
-    extensions::CefExtensionWebContentsObserver::CreateForWebContents(
-        web_contents_);
-
     // Used by the tabs extension API.
     zoom::ZoomController::CreateForWebContents(web_contents_);
   }
@@ -254,7 +259,7 @@ void CefBrowserPlatformDelegateAlloy::SendCaptureLostEvent() {
     widget->LostCapture();
 }
 
-#if defined(OS_WIN) || (defined(OS_POSIX) && !defined(OS_MAC))
+#if BUILDFLAG(IS_WIN) || (BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC))
 void CefBrowserPlatformDelegateAlloy::NotifyMoveOrResizeStarted() {
   if (!browser_)
     return;
@@ -338,33 +343,30 @@ void CefBrowserPlatformDelegateAlloy::SetAccessibilityState(
 bool CefBrowserPlatformDelegateAlloy::IsPrintPreviewSupported() const {
   REQUIRE_ALLOY_RUNTIME();
 
-  auto actionable_contents = GetActionableWebContents();
-  if (!actionable_contents)
-    return false;
-
-  auto cef_browser_context = CefBrowserContext::FromBrowserContext(
-      actionable_contents->GetBrowserContext());
-  if (!cef_browser_context->IsPrintPreviewSupported()) {
-    return false;
-  }
-
   // Print preview is not currently supported with OSR.
-  return !IsWindowless();
+  if (IsWindowless())
+    return false;
+
+  auto cef_browser_context =
+      CefBrowserContext::FromBrowserContext(web_contents_->GetBrowserContext());
+  return cef_browser_context->IsPrintPreviewSupported();
 }
 
 void CefBrowserPlatformDelegateAlloy::Print() {
   REQUIRE_ALLOY_RUNTIME();
 
-  auto actionable_contents = GetActionableWebContents();
-  if (!actionable_contents)
+  auto contents_to_use = printing::GetWebContentsToUse(web_contents_);
+  if (!contents_to_use)
     return;
 
-  auto rfh = actionable_contents->GetMainFrame();
+  auto rfh_to_use = printing::GetRenderFrameHostToUse(contents_to_use);
+  if (!rfh_to_use)
+    return;
 
   if (IsPrintPreviewSupported()) {
-    GetPrintViewManager(actionable_contents)->PrintPreviewNow(rfh, false);
+    GetPrintViewManager(contents_to_use)->PrintPreviewNow(rfh_to_use, false);
   } else {
-    GetPrintViewManager(actionable_contents)->PrintNow(rfh);
+    GetPrintViewManager(contents_to_use)->PrintNow(rfh_to_use);
   }
 }
 
@@ -374,50 +376,65 @@ void CefBrowserPlatformDelegateAlloy::PrintToPDF(
     CefRefPtr<CefPdfPrintCallback> callback) {
   REQUIRE_ALLOY_RUNTIME();
 
-  content::WebContents* actionable_contents = GetActionableWebContents();
-  if (!actionable_contents)
+  auto contents_to_use = printing::GetWebContentsToUse(web_contents_);
+  if (!contents_to_use)
     return;
+
+  auto rfh_to_use = printing::GetRenderFrameHostToUse(contents_to_use);
+  if (!rfh_to_use)
+    return;
+
   printing::CefPrintViewManager::PdfPrintCallback pdf_callback;
   if (callback.get()) {
-    pdf_callback = base::Bind(&CefPdfPrintCallback::OnPdfPrintFinished,
-                              callback.get(), path);
+    pdf_callback = base::BindOnce(&CefPdfPrintCallback::OnPdfPrintFinished,
+                                  callback.get(), path);
   }
-  GetPrintViewManager(actionable_contents)
-      ->PrintToPDF(actionable_contents->GetMainFrame(), base::FilePath(path),
-                   settings, pdf_callback);
+  GetPrintViewManager(contents_to_use)
+      ->PrintToPDF(rfh_to_use, base::FilePath(path), settings,
+                   std::move(pdf_callback));
 }
 
-void CefBrowserPlatformDelegateAlloy::Find(int identifier,
-                                           const CefString& searchText,
+void CefBrowserPlatformDelegateAlloy::Find(const CefString& searchText,
                                            bool forward,
                                            bool matchCase,
                                            bool findNext) {
   if (!web_contents_)
     return;
 
-  // Every find request must have a unique ID and these IDs must strictly
-  // increase so that newer requests always have greater IDs than older
-  // requests.
-  if (identifier <= find_request_id_counter_)
-    identifier = ++find_request_id_counter_;
-  else
-    find_request_id_counter_ = identifier;
-
-  auto options = blink::mojom::FindOptions::New();
-  options->forward = forward;
-  options->match_case = matchCase;
-  options->find_match = findNext;
-  web_contents_->Find(identifier, searchText, std::move(options));
+  find_in_page::FindTabHelper::FromWebContents(web_contents_)
+      ->StartFinding(searchText.ToString16(), forward, matchCase, findNext,
+                     /*run_synchronously_for_testing=*/false);
 }
 
 void CefBrowserPlatformDelegateAlloy::StopFinding(bool clearSelection) {
   if (!web_contents_)
     return;
 
-  content::StopFindAction action =
-      clearSelection ? content::STOP_FIND_ACTION_CLEAR_SELECTION
-                     : content::STOP_FIND_ACTION_KEEP_SELECTION;
-  web_contents_->StopFinding(action);
+  last_search_result_ = find_in_page::FindNotificationDetails();
+  find_in_page::FindTabHelper::FromWebContents(web_contents_)
+      ->StopFinding(clearSelection ? find_in_page::SelectionAction::kClear
+                                   : find_in_page::SelectionAction::kKeep);
+}
+
+bool CefBrowserPlatformDelegateAlloy::HandleFindReply(
+    int request_id,
+    int number_of_matches,
+    const gfx::Rect& selection_rect,
+    int active_match_ordinal,
+    bool final_update) {
+  if (!web_contents_)
+    return false;
+
+  auto find_in_page =
+      find_in_page::FindTabHelper::FromWebContents(web_contents_);
+
+  find_in_page->HandleFindReply(request_id, number_of_matches, selection_rect,
+                                active_match_ordinal, final_update);
+  if (!(find_in_page->find_result() == last_search_result_)) {
+    last_search_result_ = find_in_page->find_result();
+    return true;
+  }
+  return false;
 }
 
 base::RepeatingClosure
@@ -427,17 +444,6 @@ CefBrowserPlatformDelegateAlloy::GetBoundsChangedCallback() {
   }
 
   return base::RepeatingClosure();
-}
-
-content::WebContents*
-CefBrowserPlatformDelegateAlloy::GetActionableWebContents() const {
-  if (web_contents_ && extensions::ExtensionsEnabled()) {
-    content::WebContents* guest_contents =
-        extensions::GetFullPageGuestForOwnerContents(web_contents_);
-    if (guest_contents)
-      return guest_contents;
-  }
-  return web_contents_;
 }
 
 void CefBrowserPlatformDelegateAlloy::SetOwnedWebContents(

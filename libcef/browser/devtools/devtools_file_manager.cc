@@ -11,13 +11,13 @@
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/json/json_writer.h"
+#include "base/json/values_util.h"
 #include "base/lazy_instance.h"
 #include "base/path_service.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/post_task.h"
 #include "base/task/thread_pool.h"
 #include "base/threading/sequenced_task_runner_handle.h"
-#include "base/util/values/values_util.h"
 #include "base/values.h"
 #include "chrome/common/pref_names.h"
 #include "components/prefs/scoped_user_pref_update.h"
@@ -35,7 +35,7 @@ void WriteToFile(const base::FilePath& path, const std::string& content) {
 
 void AppendToFile(const base::FilePath& path, const std::string& content) {
   DCHECK(!path.empty());
-  base::AppendToFile(path, content.c_str(), content.size());
+  base::AppendToFile(path, base::StringPiece(content));
 }
 
 }  // namespace
@@ -53,37 +53,37 @@ void CefDevToolsFileManager::SaveToFile(const std::string& url,
                                         const std::string& content,
                                         bool save_as) {
   Save(url, content, save_as,
-       base::Bind(&CefDevToolsFileManager::FileSavedAs,
-                  weak_factory_.GetWeakPtr(), url),
-       base::Bind(&CefDevToolsFileManager::CanceledFileSaveAs,
-                  weak_factory_.GetWeakPtr(), url));
+       base::BindOnce(&CefDevToolsFileManager::FileSavedAs,
+                      weak_factory_.GetWeakPtr(), url),
+       base::BindOnce(&CefDevToolsFileManager::CanceledFileSaveAs,
+                      weak_factory_.GetWeakPtr(), url));
 }
 
 void CefDevToolsFileManager::AppendToFile(const std::string& url,
                                           const std::string& content) {
   Append(url, content,
-         base::Bind(&CefDevToolsFileManager::AppendedTo,
-                    weak_factory_.GetWeakPtr(), url));
+         base::BindOnce(&CefDevToolsFileManager::AppendedTo,
+                        weak_factory_.GetWeakPtr(), url));
 }
 
 void CefDevToolsFileManager::Save(const std::string& url,
                                   const std::string& content,
                                   bool save_as,
-                                  const SaveCallback& saveCallback,
-                                  const CancelCallback& cancelCallback) {
+                                  SaveCallback saveCallback,
+                                  CancelCallback cancelCallback) {
   auto it = saved_files_.find(url);
   if (it != saved_files_.end() && !save_as) {
-    SaveAsFileSelected(url, content, saveCallback, it->second);
+    SaveAsFileSelected(url, content, std::move(saveCallback), it->second);
     return;
   }
 
-  const base::DictionaryValue* file_map =
-      prefs_->GetDictionary(prefs::kDevToolsEditedFiles);
+  const base::DictionaryValue* file_map = &base::Value::AsDictionaryValue(
+      *prefs_->GetDictionary(prefs::kDevToolsEditedFiles));
   base::FilePath initial_path;
 
   const base::Value* path_value;
   if (file_map->Get(base::MD5String(url), &path_value)) {
-    base::Optional<base::FilePath> path = util::ValueToFilePath(*path_value);
+    absl::optional<base::FilePath> path = base::ValueToFilePath(*path_value);
     if (path)
       initial_path = std::move(*path);
   }
@@ -116,37 +116,38 @@ void CefDevToolsFileManager::Save(const std::string& url,
   }
 
   browser_impl_->RunFileChooser(
-      params, base::Bind(&CefDevToolsFileManager::SaveAsDialogDismissed,
-                         weak_factory_.GetWeakPtr(), url, content, saveCallback,
-                         cancelCallback));
+      params,
+      base::BindOnce(&CefDevToolsFileManager::SaveAsDialogDismissed,
+                     weak_factory_.GetWeakPtr(), url, content,
+                     std::move(saveCallback), std::move(cancelCallback)));
 }
 
 void CefDevToolsFileManager::SaveAsDialogDismissed(
     const std::string& url,
     const std::string& content,
-    const SaveCallback& saveCallback,
-    const CancelCallback& cancelCallback,
+    SaveCallback saveCallback,
+    CancelCallback cancelCallback,
     int selected_accept_filter,
     const std::vector<base::FilePath>& file_paths) {
   if (file_paths.size() == 1) {
-    SaveAsFileSelected(url, content, saveCallback, file_paths[0]);
+    SaveAsFileSelected(url, content, std::move(saveCallback), file_paths[0]);
   } else {
-    cancelCallback.Run();
+    std::move(cancelCallback).Run();
   }
 }
 
 void CefDevToolsFileManager::SaveAsFileSelected(const std::string& url,
                                                 const std::string& content,
-                                                const SaveCallback& callback,
+                                                SaveCallback callback,
                                                 const base::FilePath& path) {
   *g_last_save_path.Pointer() = path;
   saved_files_[url] = path;
 
   DictionaryPrefUpdate update(prefs_, prefs::kDevToolsEditedFiles);
-  base::DictionaryValue* files_map = update.Get();
-  files_map->SetKey(base::MD5String(url), util::FilePathToValue(path));
+  base::Value* files_map = update.Get();
+  files_map->SetKey(base::MD5String(url), base::FilePathToValue(path));
   std::string file_system_path = path.AsUTF8Unsafe();
-  callback.Run(file_system_path);
+  std::move(callback).Run(file_system_path);
   file_task_runner_->PostTask(FROM_HERE,
                               base::BindOnce(&::WriteToFile, path, content));
 }
@@ -167,11 +168,11 @@ void CefDevToolsFileManager::CanceledFileSaveAs(const std::string& url) {
 
 void CefDevToolsFileManager::Append(const std::string& url,
                                     const std::string& content,
-                                    const AppendCallback& callback) {
+                                    AppendCallback callback) {
   auto it = saved_files_.find(url);
   if (it == saved_files_.end())
     return;
-  callback.Run();
+  std::move(callback).Run();
   file_task_runner_->PostTask(
       FROM_HERE, base::BindOnce(&::AppendToFile, it->second, content));
 }

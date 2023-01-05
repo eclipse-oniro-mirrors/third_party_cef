@@ -23,10 +23,10 @@
 #include "chrome/browser/download/download_prefs.h"
 #include "chrome/browser/media/media_device_id_salt.h"
 #include "chrome/browser/media/router/media_router_feature.h"
-#include "chrome/browser/net/prediction_options.h"
 #include "chrome/browser/net/profile_network_context_service.h"
 #include "chrome/browser/net/system_network_context_manager.h"
 #include "chrome/browser/plugins/plugin_info_host_impl.h"
+#include "chrome/browser/prefetch/prefetch_prefs.h"
 #include "chrome/browser/prefs/chrome_command_line_pref_store.h"
 #include "chrome/browser/printing/print_preview_sticky_settings.h"
 #include "chrome/browser/profiles/profile.h"
@@ -39,6 +39,7 @@
 #include "chrome/common/pref_names.h"
 #include "chrome/grit/locale_settings.h"
 #include "components/certificate_transparency/pref_names.h"
+#include "components/component_updater/component_updater_service.h"
 #include "components/content_settings/core/browser/cookie_settings.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/flags_ui/pref_service_flags_storage.h"
@@ -64,7 +65,7 @@
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/ui_base_switches.h"
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include "components/os_crypt/os_crypt.h"
 #endif
 
@@ -230,8 +231,9 @@ std::unique_ptr<PrefService> CreatePrefService(Profile* profile,
   update_client::RegisterPrefs(registry.get());
 
   if (!profile) {
+    component_updater::RegisterComponentUpdateServicePrefs(registry.get());
     SystemNetworkContextManager::RegisterPrefs(registry.get());
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
     OSCrypt::RegisterLocalPrefs(registry.get());
 #endif
   }
@@ -249,6 +251,10 @@ std::unique_ptr<PrefService> CreatePrefService(Profile* profile,
                                 false);
   registry->RegisterBooleanPref(prefs::kWebRTCAllowLegacyTLSProtocols, false);
 
+  // Profile preferences.
+  // Based on chrome/browser/profiles/profiles_state.cc RegisterPrefs.
+  registry->RegisterStringPref(prefs::kProfileLastUsed, std::string());
+
   if (profile) {
     // Call RegisterProfilePrefs() for all services listed by
     // EnsureBrowserContextKeyedServiceFactoriesBuilt().
@@ -257,12 +263,12 @@ std::unique_ptr<PrefService> CreatePrefService(Profile* profile,
 
     // Default profile preferences.
     AccessibilityUIMessageHandler::RegisterProfilePrefs(registry.get());
-    chrome_browser_net::RegisterPredictionOptionsProfilePrefs(registry.get());
     extensions::ExtensionPrefs::RegisterProfilePrefs(registry.get());
     HostContentSettingsMap::RegisterProfilePrefs(registry.get());
     language::LanguagePrefs::RegisterProfilePrefs(registry.get());
     media_router::RegisterProfilePrefs(registry.get());
     MediaDeviceIDSalt::RegisterProfilePrefs(registry.get());
+    prefetch::RegisterPredictionOptionsProfilePrefs(registry.get());
     ProfileNetworkContextService::RegisterProfilePrefs(registry.get());
     safe_browsing::RegisterProfilePrefs(registry.get());
     RegisterProfilePrefs(registry.get());
@@ -294,6 +300,10 @@ std::unique_ptr<PrefService> CreatePrefService(Profile* profile,
     registry->RegisterFilePathPref(prefs::kDiskCacheDir, cache_path);
     registry->RegisterIntegerPref(prefs::kDiskCacheSize, 0);
 
+    // Based on Profile::RegisterProfilePrefs.
+    registry->RegisterBooleanPref(prefs::kSearchSuggestEnabled, false);
+    registry->RegisterStringPref(prefs::kSessionExitType, std::string());
+
     // Spell checking preferences.
     // Modify defaults from SpellcheckServiceFactory::RegisterProfilePrefs.
     std::string spellcheck_lang =
@@ -309,10 +319,6 @@ std::unique_ptr<PrefService> CreatePrefService(Profile* profile,
         base::Value(enable_spelling_service_));
     registry->SetDefaultPrefValue(spellcheck::prefs::kSpellCheckEnable,
                                   base::Value(!enable_spelling_service_));
-
-    // Pepper flash preferences.
-    // Modify defaults from DeviceIDFetcher::RegisterProfilePrefs.
-    registry->SetDefaultPrefValue(prefs::kEnableDRM, base::Value(false));
 
     // DevTools preferences.
     // Based on DevToolsWindow::RegisterProfilePrefs.

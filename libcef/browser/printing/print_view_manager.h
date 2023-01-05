@@ -7,11 +7,12 @@
 
 #include "include/internal/cef_types_wrappers.h"
 
-#include "base/macros.h"
+#include "base/callback_forward.h"
 #include "chrome/browser/printing/print_view_manager.h"
 #include "components/printing/common/print.mojom-forward.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
+#include "printing/mojom/print.mojom.h"
 
 namespace content {
 class RenderFrameHost;
@@ -21,24 +22,29 @@ class WebContentsObserver;
 
 class CefBrowserInfo;
 
-struct PrintHostMsg_RequestPrintPreview_Params;
-
 namespace printing {
 
 // CEF handler for print commands.
 class CefPrintViewManager : public PrintViewManager,
                             public mojom::PrintPreviewUI {
  public:
+  CefPrintViewManager(const CefPrintViewManager&) = delete;
+  CefPrintViewManager& operator=(const CefPrintViewManager&) = delete;
+
   ~CefPrintViewManager() override;
 
+  static void BindPrintManagerHost(
+      mojo::PendingAssociatedReceiver<mojom::PrintManagerHost> receiver,
+      content::RenderFrameHost* rfh);
+
   // Callback executed on PDF printing completion.
-  typedef base::Callback<void(bool /*ok*/)> PdfPrintCallback;
+  using PdfPrintCallback = base::OnceCallback<void(bool /*ok*/)>;
 
   // Print the current document to a PDF file. Execute |callback| on completion.
   bool PrintToPDF(content::RenderFrameHost* rfh,
                   const base::FilePath& path,
                   const CefPdfPrintSettings& settings,
-                  const PdfPrintCallback& callback);
+                  PdfPrintCallback callback);
 
   // mojom::PrintManagerHost methods:
   void GetDefaultPrintSettings(
@@ -73,7 +79,8 @@ class CefPrintViewManager : public PrintViewManager,
   // content::WebContentsObserver methods:
   void RenderFrameDeleted(content::RenderFrameHost* render_frame_host) override;
   void NavigationStopped() override;
-  void RenderProcessGone(base::TerminationStatus status) override;
+  void PrimaryMainFrameRenderProcessGone(
+      base::TerminationStatus status) override;
 
   // Inline versions of the content::WebContentsUserData methods to avoid
   // ambiguous warnings due to the PrintViewManager base class also extending
@@ -93,8 +100,6 @@ class CefPrintViewManager : public PrintViewManager,
   struct PdfPrintState;
   std::unique_ptr<PdfPrintState> pdf_print_state_;
   mojo::AssociatedReceiver<mojom::PrintPreviewUI> pdf_print_receiver_{this};
-
-  DISALLOW_COPY_AND_ASSIGN(CefPrintViewManager);
 };
 
 }  // namespace printing

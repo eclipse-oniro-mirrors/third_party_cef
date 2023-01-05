@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=7c6283658d49420281d02b4793f65f478f261461$
+// $hash=43217c47279478323050eef44d6403cb4b5c62a6$
 //
 
 #include "libcef_dll/cpptoc/views/view_delegate_cpptoc.h"
@@ -194,6 +194,34 @@ view_delegate_on_window_changed(struct _cef_view_delegate_t* self,
                                                     added ? true : false);
 }
 
+void CEF_CALLBACK
+view_delegate_on_layout_changed(struct _cef_view_delegate_t* self,
+                                cef_view_t* view,
+                                const cef_rect_t* new_bounds) {
+  shutdown_checker::AssertNotShutdown();
+
+  // AUTO-GENERATED CONTENT - DELETE THIS COMMENT BEFORE MODIFYING
+
+  DCHECK(self);
+  if (!self)
+    return;
+  // Verify param: view; type: refptr_diff
+  DCHECK(view);
+  if (!view)
+    return;
+  // Verify param: new_bounds; type: simple_byref_const
+  DCHECK(new_bounds);
+  if (!new_bounds)
+    return;
+
+  // Translate param: new_bounds; type: simple_byref_const
+  CefRect new_boundsVal = new_bounds ? *new_bounds : CefRect();
+
+  // Execute
+  CefViewDelegateCppToC::Get(self)->OnLayoutChanged(CefViewCToCpp::Wrap(view),
+                                                    new_boundsVal);
+}
+
 void CEF_CALLBACK view_delegate_on_focus(struct _cef_view_delegate_t* self,
                                          cef_view_t* view) {
   shutdown_checker::AssertNotShutdown();
@@ -242,6 +270,7 @@ CefViewDelegateCppToC::CefViewDelegateCppToC() {
   GetStruct()->on_parent_view_changed = view_delegate_on_parent_view_changed;
   GetStruct()->on_child_view_changed = view_delegate_on_child_view_changed;
   GetStruct()->on_window_changed = view_delegate_on_window_changed;
+  GetStruct()->on_layout_changed = view_delegate_on_layout_changed;
   GetStruct()->on_focus = view_delegate_on_focus;
   GetStruct()->on_blur = view_delegate_on_blur;
 }

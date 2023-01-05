@@ -21,6 +21,7 @@
 #include "ui/base/l10n/l10n_util_win.h"
 #include "ui/base/models/image_model.h"
 #include "ui/base/models/menu_model.h"
+#include "ui/color/color_provider_manager.h"
 #include "ui/events/keycodes/keyboard_codes.h"
 #include "ui/gfx/canvas.h"
 #include "ui/gfx/font_list.h"
@@ -134,6 +135,9 @@ class CefNativeMenuWin::MenuHostWindow {
     gfx::CheckWindowCreated(hwnd_, ::GetLastError());
     gfx::SetWindowUserData(hwnd_, this);
   }
+
+  MenuHostWindow(const MenuHostWindow&) = delete;
+  MenuHostWindow& operator=(const MenuHostWindow&) = delete;
 
   ~MenuHostWindow() { DestroyWindow(hwnd_); }
 
@@ -295,11 +299,15 @@ class CefNativeMenuWin::MenuHostWindow {
         ui::NativeTheme* native_theme =
             ui::NativeTheme::GetInstanceForNativeUi();
 
+        auto* color_provider =
+            ui::ColorProviderManager::Get().GetColorProviderFor(
+                native_theme->GetColorProviderKey(nullptr));
+
         // We currently don't support items with both icons and checkboxes.
         const gfx::ImageSkia skia_icon =
             icon.IsImage() ? icon.GetImage().AsImageSkia()
                            : ui::ThemedVectorIcon(icon.GetVectorIcon())
-                                 .GetImageSkia(native_theme, 16);
+                                 .GetImageSkia(color_provider, 16);
 
         DCHECK(type != ui::MenuModel::TYPE_CHECK);
         std::unique_ptr<SkCanvas> canvas = skia::CreatePlatformCanvas(
@@ -337,10 +345,15 @@ class CefNativeMenuWin::MenuHostWindow {
         // Draw the background and the check.
         ui::NativeTheme* native_theme =
             ui::NativeTheme::GetInstanceForNativeUi();
-        native_theme->Paint(&paint_canvas, NativeTheme::kMenuCheckBackground,
-                            state, bounds, extra);
-        native_theme->Paint(&paint_canvas, NativeTheme::kMenuCheck, state,
-                            bounds, extra);
+        auto* color_provider =
+            ui::ColorProviderManager::Get().GetColorProviderFor(
+                native_theme->GetColorProviderKey(nullptr));
+
+        native_theme->Paint(&paint_canvas, color_provider,
+                            NativeTheme::kMenuCheckBackground, state, bounds,
+                            extra);
+        native_theme->Paint(&paint_canvas, color_provider,
+                            NativeTheme::kMenuCheck, state, bounds, extra);
 
         // Draw checkbox to menu.
         DrawToNativeContext(
@@ -404,8 +417,6 @@ class CefNativeMenuWin::MenuHostWindow {
   }
 
   HWND hwnd_;
-
-  DISALLOW_COPY_AND_ASSIGN(MenuHostWindow);
 };
 
 struct CefNativeMenuWin::HighlightedMenuItemInfo {
@@ -487,8 +498,8 @@ void CefNativeMenuWin::RunMenuAt(const gfx::Point& point, int alignment) {
     // does.
     menu_to_select_factory_.InvalidateWeakPtrs();
     base::ThreadTaskRunnerHandle::Get()->PostTask(
-        FROM_HERE, base::Bind(&CefNativeMenuWin::DelayedSelect,
-                              menu_to_select_factory_.GetWeakPtr()));
+        FROM_HERE, base::BindOnce(&CefNativeMenuWin::DelayedSelect,
+                                  menu_to_select_factory_.GetWeakPtr()));
     menu_action_ = MENU_ACTION_SELECTED;
   }
   // Send MenuWillClose after we schedule the select, otherwise MenuWillClose is

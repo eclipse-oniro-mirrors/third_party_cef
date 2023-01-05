@@ -9,16 +9,18 @@
 #include "libcef/browser/views/window_impl.h"
 #include "libcef/features/runtime.h"
 
-#include "third_party/skia/include/core/SkRegion.h"
 #include "ui/base/hit_test.h"
 #include "ui/views/widget/widget.h"
 #include "ui/views/window/native_frame_view.h"
 
-#if defined(OS_LINUX) && defined(USE_X11)
+#if BUILDFLAG(IS_LINUX)
+#include "ui/ozone/buildflags.h"
+#if BUILDFLAG(OZONE_PLATFORM_X11)
 #include "ui/base/x/x11_util.h"
 #endif
+#endif
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include "ui/display/screen.h"
 #include "ui/views/win/hwnd_util.h"
 #endif
@@ -40,6 +42,9 @@ class ClientViewEx : public views::ClientView {
     DCHECK(window_delegate_);
   }
 
+  ClientViewEx(const ClientViewEx&) = delete;
+  ClientViewEx& operator=(const ClientViewEx&) = delete;
+
   views::CloseRequestResult OnWindowCloseRequested() override {
     return window_delegate_->CanWidgetClose()
                ? views::CloseRequestResult::kCanClose
@@ -48,8 +53,6 @@ class ClientViewEx : public views::ClientView {
 
  private:
   CefWindowView::Delegate* window_delegate_;  // Not owned by this object.
-
-  DISALLOW_COPY_AND_ASSIGN(ClientViewEx);
 };
 
 // Extend NativeFrameView with draggable region handling.
@@ -58,9 +61,12 @@ class NativeFrameViewEx : public views::NativeFrameView {
   NativeFrameViewEx(views::Widget* widget, CefWindowView* view)
       : views::NativeFrameView(widget), widget_(widget), view_(view) {}
 
+  NativeFrameViewEx(const NativeFrameViewEx&) = delete;
+  NativeFrameViewEx& operator=(const NativeFrameViewEx&) = delete;
+
   gfx::Rect GetWindowBoundsForClientBounds(
       const gfx::Rect& client_bounds) const override {
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
     // views::GetWindowBoundsForClientBounds() expects the input Rect to be in
     // pixel coordinates. NativeFrameView does not implement this correctly so
     // we need to provide our own implementation. See http://crbug.com/602692.
@@ -94,8 +100,6 @@ class NativeFrameViewEx : public views::NativeFrameView {
   // Not owned by this object.
   views::Widget* widget_;
   CefWindowView* view_;
-
-  DISALLOW_COPY_AND_ASSIGN(NativeFrameViewEx);
 };
 
 // The area inside the frame border that can be clicked and dragged for resizing
@@ -112,6 +116,9 @@ class CaptionlessFrameView : public views::NonClientFrameView {
  public:
   CaptionlessFrameView(views::Widget* widget, CefWindowView* view)
       : widget_(widget), view_(view) {}
+
+  CaptionlessFrameView(const CaptionlessFrameView&) = delete;
+  CaptionlessFrameView& operator=(const CaptionlessFrameView&) = delete;
 
   gfx::Rect GetBoundsForClientView() const override {
     return client_view_bounds_;
@@ -139,7 +146,7 @@ class CaptionlessFrameView : public views::NonClientFrameView {
     // fullscreen, as it can't be resized in those states.
     int resize_border_thickness = ResizeBorderThickness();
     int frame_component = GetHTComponentForFrame(
-        point, resize_border_thickness, resize_border_thickness,
+        point, gfx::Insets(resize_border_thickness, resize_border_thickness),
         kResizeAreaCornerSize, kResizeAreaCornerSize, can_ever_resize);
     if (frame_component != HTNOWHERE)
       return frame_component;
@@ -183,6 +190,7 @@ class CaptionlessFrameView : public views::NonClientFrameView {
 
   void Layout() override {
     client_view_bounds_.SetRect(0, 0, width(), height());
+    views::NonClientFrameView::Layout();
   }
 
   gfx::Size CalculatePreferredSize() const override {
@@ -222,14 +230,12 @@ class CaptionlessFrameView : public views::NonClientFrameView {
 
   // The bounds of the client view, in this view's coordinates.
   gfx::Rect client_view_bounds_;
-
-  DISALLOW_COPY_AND_ASSIGN(CaptionlessFrameView);
 };
 
 bool IsWindowBorderHit(int code) {
 // On Windows HTLEFT = 10 and HTBORDER = 18. Values are not ordered the same
 // in base/hit_test.h for non-Windows platforms.
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   return code >= HTLEFT && code <= HTBORDER;
 #else
   return code == HTLEFT || code == HTRIGHT || code == HTTOP ||
@@ -261,12 +267,36 @@ void CefWindowView::CreateWidget() {
   params.type = views::Widget::InitParams::TYPE_WINDOW;
   bool can_activate = true;
 
+  // WidgetDelegate::DeleteDelegate() will delete |this| after executing the
+  // registered callback.
+  SetOwnedByWidget(true);
+  RegisterDeleteDelegateCallback(
+      base::BindOnce(&CefWindowView::DeleteDelegate, base::Unretained(this)));
+
   if (cef_delegate()) {
     CefRefPtr<CefWindow> cef_window = GetCefWindow();
     is_frameless_ = cef_delegate()->IsFrameless(cef_window);
 
     auto bounds = cef_delegate()->GetInitialBounds(cef_window);
     params.bounds = gfx::Rect(bounds.x, bounds.y, bounds.width, bounds.height);
+
+    SetCanResize(cef_delegate()->CanResize(cef_window));
+
+    const auto show_state = cef_delegate()->GetInitialShowState(cef_window);
+    switch (show_state) {
+      case CEF_SHOW_STATE_NORMAL:
+        params.show_state = ui::SHOW_STATE_NORMAL;
+        break;
+      case CEF_SHOW_STATE_MINIMIZED:
+        params.show_state = ui::SHOW_STATE_MINIMIZED;
+        break;
+      case CEF_SHOW_STATE_MAXIMIZED:
+        params.show_state = ui::SHOW_STATE_MAXIMIZED;
+        break;
+      case CEF_SHOW_STATE_FULLSCREEN:
+        params.show_state = ui::SHOW_STATE_FULLSCREEN;
+        break;
+    }
 
     bool is_menu = false;
     bool can_activate_menu = true;
@@ -285,7 +315,7 @@ void CefWindowView::CreateWidget() {
 
         can_activate = can_activate_menu;
         if (can_activate_menu)
-          params.activatable = views::Widget::InitParams::ACTIVATABLE_YES;
+          params.activatable = views::Widget::InitParams::Activatable::kYes;
       }
     }
   }
@@ -295,7 +325,7 @@ void CefWindowView::CreateWidget() {
     params.bounds = gfx::Rect(CalculatePreferredSize());
   }
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   if (is_frameless_) {
     // Don't show the native window caption. Setting this value on Linux will
     // result in window resize artifacts.
@@ -304,6 +334,7 @@ void CefWindowView::CreateWidget() {
 #endif
 
   widget->Init(std::move(params));
+  widget->AddObserver(this);
 
   // |widget| should now be associated with |this|.
   DCHECK_EQ(widget, GetWidget());
@@ -315,13 +346,15 @@ void CefWindowView::CreateWidget() {
     DCHECK(widget->widget_delegate()->CanActivate());
   }
 
-#if defined(OS_LINUX) && defined(USE_X11)
+#if BUILDFLAG(IS_LINUX)
+#if BUILDFLAG(OZONE_PLATFORM_X11)
   if (is_frameless_) {
     auto window = view_util::GetWindowHandle(widget);
     DCHECK(window);
     ui::SetUseOSWindowFrame(static_cast<x11::Window>(window), false);
   }
-#endif  // defined(OS_LINUX) && defined(USE_X11)
+#endif
+#endif
 }
 
 CefRefPtr<CefWindow> CefWindowView::GetCefWindow() const {
@@ -333,18 +366,9 @@ CefRefPtr<CefWindow> CefWindowView::GetCefWindow() const {
 void CefWindowView::DeleteDelegate() {
   // Remove all child Views before deleting the Window so that notifications
   // resolve correctly.
-  RemoveAllChildViews(true);
+  RemoveAllChildViews();
 
   window_delegate_->OnWindowViewDeleted();
-
-  // Deletes |this|.
-  views::WidgetDelegateView::DeleteDelegate();
-}
-
-bool CefWindowView::CanResize() const {
-  if (!cef_delegate())
-    return true;
-  return cef_delegate()->CanResize(GetCefWindow());
 }
 
 bool CefWindowView::CanMinimize() const {
@@ -363,18 +387,22 @@ std::u16string CefWindowView::GetWindowTitle() const {
   return title_;
 }
 
-gfx::ImageSkia CefWindowView::GetWindowIcon() {
+ui::ImageModel CefWindowView::GetWindowIcon() {
   if (!window_icon_)
     return ParentClass::GetWindowIcon();
-  return static_cast<CefImageImpl*>(window_icon_.get())
-      ->GetForced1xScaleRepresentation(GetDisplay().device_scale_factor());
+  auto image_skia =
+      static_cast<CefImageImpl*>(window_icon_.get())
+          ->GetForced1xScaleRepresentation(GetDisplay().device_scale_factor());
+  return ui::ImageModel::FromImageSkia(image_skia);
 }
 
-gfx::ImageSkia CefWindowView::GetWindowAppIcon() {
+ui::ImageModel CefWindowView::GetWindowAppIcon() {
   if (!window_app_icon_)
     return ParentClass::GetWindowAppIcon();
-  return static_cast<CefImageImpl*>(window_app_icon_.get())
-      ->GetForced1xScaleRepresentation(GetDisplay().device_scale_factor());
+  auto image_skia =
+      static_cast<CefImageImpl*>(window_app_icon_.get())
+          ->GetForced1xScaleRepresentation(GetDisplay().device_scale_factor());
+  return ui::ImageModel::FromImageSkia(image_skia);
 }
 
 void CefWindowView::WindowClosing() {
@@ -427,7 +455,7 @@ bool CefWindowView::ShouldDescendIntoChildForEventHandling(
 }
 
 bool CefWindowView::MaybeGetMinimumSize(gfx::Size* size) const {
-#if defined(OS_LINUX)
+#if BUILDFLAG(IS_LINUX)
   // Resize is disabled on Linux by returning the preferred size as the min/max
   // size.
   if (!CanResize()) {
@@ -439,7 +467,7 @@ bool CefWindowView::MaybeGetMinimumSize(gfx::Size* size) const {
 }
 
 bool CefWindowView::MaybeGetMaximumSize(gfx::Size* size) const {
-#if defined(OS_LINUX)
+#if BUILDFLAG(IS_LINUX)
   // Resize is disabled on Linux by returning the preferred size as the min/max
   // size.
   if (!CanResize()) {
@@ -460,6 +488,11 @@ void CefWindowView::ViewHierarchyChanged(
   }
 
   ParentClass::ViewHierarchyChanged(details);
+}
+
+void CefWindowView::OnWidgetBoundsChanged(views::Widget* widget,
+                                          const gfx::Rect& new_bounds) {
+  MoveOverlaysIfNecessary();
 }
 
 display::Display CefWindowView::GetDisplay() const {
@@ -495,6 +528,39 @@ void CefWindowView::SetWindowAppIcon(CefRefPtr<CefImage> window_app_icon) {
   views::Widget* widget = GetWidget();
   if (widget)
     widget->UpdateWindowIcon();
+}
+
+CefRefPtr<CefOverlayController> CefWindowView::AddOverlayView(
+    CefRefPtr<CefView> view,
+    cef_docking_mode_t docking_mode) {
+  DCHECK(view.get());
+  DCHECK(view->IsValid());
+  if (!view.get() || !view->IsValid())
+    return nullptr;
+
+  views::Widget* widget = GetWidget();
+  if (widget) {
+    // Owned by the View hierarchy. Acts as a z-order reference for the overlay.
+    auto overlay_host_view = AddChildView(std::make_unique<views::View>());
+
+    overlay_hosts_.push_back(
+        std::make_unique<CefOverlayViewHost>(this, docking_mode));
+
+    auto& overlay_host = overlay_hosts_.back();
+    overlay_host->Init(overlay_host_view, view);
+
+    return overlay_host->controller();
+  }
+
+  return nullptr;
+}
+
+void CefWindowView::MoveOverlaysIfNecessary() {
+  if (overlay_hosts_.empty())
+    return;
+  for (auto& overlay_host : overlay_hosts_) {
+    overlay_host->MoveIfNecessary();
+  }
 }
 
 void CefWindowView::SetDraggableRegions(

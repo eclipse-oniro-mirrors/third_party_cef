@@ -13,7 +13,6 @@
 
 #include "include/internal/cef_types.h"
 
-#include "base/macros.h"
 #include "third_party/blink/public/platform/web_common.h"
 #include "v8/include/v8.h"
 
@@ -40,10 +39,12 @@ BLINK_EXPORT bool CanGoForward(blink::WebView* view);
 BLINK_EXPORT void GoBack(blink::WebView* view);
 BLINK_EXPORT void GoForward(blink::WebView* view);
 
+BLINK_EXPORT bool IsInBackForwardCache(blink::WebLocalFrame* frame);
+
 // Returns the text of the document element.
-BLINK_EXPORT std::string DumpDocumentText(blink::WebLocalFrame* frame);
+BLINK_EXPORT blink::WebString DumpDocumentText(blink::WebLocalFrame* frame);
 // Returns the markup of the document element.
-BLINK_EXPORT std::string DumpDocumentMarkup(blink::WebLocalFrame* frame);
+BLINK_EXPORT blink::WebString DumpDocumentMarkup(blink::WebLocalFrame* frame);
 
 // Expose additional actions on WebNode.
 BLINK_EXPORT cef_dom_node_type_t GetNodeType(const blink::WebNode& node);
@@ -78,13 +79,15 @@ BLINK_EXPORT void RegisterURLSchemeAsSupportingFetchAPI(
 class BLINK_EXPORT CefScriptForbiddenScope final {
  public:
   CefScriptForbiddenScope();
+
+  CefScriptForbiddenScope(const CefScriptForbiddenScope&) = delete;
+  CefScriptForbiddenScope& operator=(const CefScriptForbiddenScope&) = delete;
+
   ~CefScriptForbiddenScope();
 
  private:
   struct Impl;
   std::unique_ptr<Impl> impl_;
-
-  DISALLOW_COPY_AND_ASSIGN(CefScriptForbiddenScope);
 };
 
 BLINK_EXPORT bool ResponseWasCached(const blink::WebURLResponse& response);

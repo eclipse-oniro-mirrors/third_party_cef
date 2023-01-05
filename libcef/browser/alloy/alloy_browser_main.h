@@ -8,22 +8,17 @@
 
 #include "libcef/browser/request_context_impl.h"
 
-#include "base/macros.h"
+#include "base/command_line.h"
 #include "base/strings/string_piece.h"
 #include "build/build_config.h"
 #include "components/prefs/pref_service.h"
 #include "content/public/browser/browser_main_parts.h"
-
-namespace content {
-struct MainFunctionParams;
-}
-
-namespace extensions {
-class ExtensionsBrowserClient;
-class ExtensionsClient;
-}  // namespace extensions
+#include "content/public/common/main_function_params.h"
 
 #if defined(USE_AURA)
+namespace display {
+class Screen;
+}
 namespace wm {
 class WMState;
 }
@@ -32,7 +27,7 @@ class WMState;
 #if defined(TOOLKIT_VIEWS)
 namespace views {
 class ViewsDelegate;
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
 class LayoutProvider;
 #endif
 }  // namespace views
@@ -42,13 +37,17 @@ class CefDevToolsDelegate;
 
 class AlloyBrowserMainParts : public content::BrowserMainParts {
  public:
-  explicit AlloyBrowserMainParts(const content::MainFunctionParams& parameters);
+  explicit AlloyBrowserMainParts(content::MainFunctionParams parameters);
+
+  AlloyBrowserMainParts(const AlloyBrowserMainParts&) = delete;
+  AlloyBrowserMainParts& operator=(const AlloyBrowserMainParts&) = delete;
+
   ~AlloyBrowserMainParts() override;
 
   int PreEarlyInitialization() override;
   void ToolkitInitialized() override;
-  void PreMainMessageLoopStart() override;
-  void PostMainMessageLoopStart() override;
+  void PreCreateMainMessageLoop() override;
+  void PostCreateMainMessageLoop() override;
   int PreCreateThreads() override;
   int PreMainMessageLoopRun() override;
   void PostMainMessageLoopRun() override;
@@ -71,16 +70,14 @@ class AlloyBrowserMainParts : public content::BrowserMainParts {
   }
 
  private:
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   void PlatformInitialize();
-#endif  // defined(OS_WIN)
+#endif  // BUILDFLAG(IS_WIN)
+
+  content::MainFunctionParams parameters_;
 
   CefRefPtr<CefRequestContextImpl> global_request_context_;
-  CefDevToolsDelegate* devtools_delegate_;  // Deletes itself.
-
-  std::unique_ptr<extensions::ExtensionsClient> extensions_client_;
-  std::unique_ptr<extensions::ExtensionsBrowserClient>
-      extensions_browser_client_;
+  CefDevToolsDelegate* devtools_delegate_ = nullptr;  // Deletes itself.
 
   // Blocking task runners exposed via CefTaskRunner. For consistency with
   // previous named thread behavior always execute all pending tasks before
@@ -91,17 +88,16 @@ class AlloyBrowserMainParts : public content::BrowserMainParts {
   scoped_refptr<base::SingleThreadTaskRunner> user_blocking_task_runner_;
 
 #if defined(USE_AURA)
+  std::unique_ptr<display::Screen> screen_;
   std::unique_ptr<wm::WMState> wm_state_;
 #endif
 
 #if defined(TOOLKIT_VIEWS)
   std::unique_ptr<views::ViewsDelegate> views_delegate_;
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
   std::unique_ptr<views::LayoutProvider> layout_provider_;
 #endif
 #endif  // defined(TOOLKIT_VIEWS)
-
-  DISALLOW_COPY_AND_ASSIGN(AlloyBrowserMainParts);
 };
 
 #endif  // CEF_LIBCEF_BROWSER_ALLOY_ALLOY_BROWSER_MAIN_H_

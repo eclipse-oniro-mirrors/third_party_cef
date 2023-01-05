@@ -10,7 +10,7 @@
 #include <sstream>
 #include <string>
 
-#include "include/base/cef_bind.h"
+#include "include/base/cef_callback.h"
 #include "include/cef_browser.h"
 #include "include/cef_frame.h"
 #include "include/cef_parser.h"
@@ -230,7 +230,7 @@ class ClientDownloadImageCallback : public CefDownloadImageCallback {
 
   void OnDownloadImageFinished(const CefString& image_url,
                                int http_status_code,
-                               CefRefPtr<CefImage> image) OVERRIDE {
+                               CefRefPtr<CefImage> image) override {
     if (image)
       client_handler_->NotifyFavicon(image);
   }
@@ -276,7 +276,7 @@ ClientHandler::ClientHandler(Delegate* delegate,
 void ClientHandler::DetachDelegate() {
   if (!CURRENTLY_ON_MAIN_THREAD()) {
     // Execute this method on the main thread.
-    MAIN_POST_CLOSURE(base::Bind(&ClientHandler::DetachDelegate, this));
+    MAIN_POST_CLOSURE(base::BindOnce(&ClientHandler::DetachDelegate, this));
     return;
   }
 
@@ -562,6 +562,7 @@ bool ClientHandler::OnPreKeyEvent(CefRefPtr<CefBrowser> browser,
                                   bool* is_keyboard_shortcut) {
   CEF_REQUIRE_UI_THREAD();
 
+  /*
   if (!event.focus_on_editable_field && event.windows_key_code == 0x20) {
     // Special handling for the space character when an input element does not
     // have focus. Handling the event in OnPreKeyEvent() keeps the event from
@@ -572,6 +573,7 @@ bool ClientHandler::OnPreKeyEvent(CefRefPtr<CefBrowser> browser,
       test_runner::Alert(browser, "You pressed the space bar!");
     return true;
   }
+  */
 
   return false;
 }
@@ -717,11 +719,12 @@ bool ClientHandler::OnOpenURLFromTab(
       target_disposition == WOD_NEW_FOREGROUND_TAB) {
     // Handle middle-click and ctrl + left-click by opening the URL in a new
     // browser window.
-    RootWindowConfig config;
-    config.with_controls = true;
-    config.with_osr = is_osr();
-    config.url = target_url;
-    MainContext::Get()->GetRootWindowManager()->CreateRootWindow(config);
+    auto config = std::make_unique<RootWindowConfig>();
+    config->with_controls = true;
+    config->with_osr = is_osr();
+    config->url = target_url;
+    MainContext::Get()->GetRootWindowManager()->CreateRootWindow(
+        std::move(config));
     return true;
   }
 
@@ -770,13 +773,16 @@ bool ClientHandler::GetAuthCredentials(CefRefPtr<CefBrowser> browser,
 bool ClientHandler::OnQuotaRequest(CefRefPtr<CefBrowser> browser,
                                    const CefString& origin_url,
                                    int64 new_size,
-                                   CefRefPtr<CefRequestCallback> callback) {
+                                   CefRefPtr<CefCallback> callback) {
   CEF_REQUIRE_IO_THREAD();
 
   static const int64 max_size = 1024 * 1024 * 20;  // 20mb.
 
   // Grant the quota request if the size is reasonable.
-  callback->Continue(new_size <= max_size);
+  if (new_size <= max_size)
+    callback->Continue();
+  else
+    callback->Cancel();
   return true;
 }
 
@@ -784,13 +790,13 @@ bool ClientHandler::OnCertificateError(CefRefPtr<CefBrowser> browser,
                                        ErrorCode cert_error,
                                        const CefString& request_url,
                                        CefRefPtr<CefSSLInfo> ssl_info,
-                                       CefRefPtr<CefRequestCallback> callback) {
+                                       CefRefPtr<CefCallback> callback) {
   CEF_REQUIRE_UI_THREAD();
 
   if (cert_error == ERR_CERT_AUTHORITY_INVALID &&
       request_url.ToString().find("https://www.magpcss.org/") == 0U) {
     // Allow the CEF Forum to load. It has a self-signed certificate.
-    callback->Continue(true);
+    callback->Continue();
     return true;
   }
 
@@ -886,7 +892,7 @@ cef_return_value_t ClientHandler::OnBeforeResourceLoad(
     CefRefPtr<CefBrowser> browser,
     CefRefPtr<CefFrame> frame,
     CefRefPtr<CefRequest> request,
-    CefRefPtr<CefRequestCallback> callback) {
+    CefRefPtr<CefCallback> callback) {
   CEF_REQUIRE_IO_THREAD();
 
   return resource_manager_->OnBeforeResourceLoad(browser, frame, request,
@@ -935,8 +941,8 @@ void ClientHandler::ShowDevTools(CefRefPtr<CefBrowser> browser,
                                  const CefPoint& inspect_element_at) {
   if (!CefCurrentlyOn(TID_UI)) {
     // Execute this method on the UI thread.
-    CefPostTask(TID_UI, base::Bind(&ClientHandler::ShowDevTools, this, browser,
-                                   inspect_element_at));
+    CefPostTask(TID_UI, base::BindOnce(&ClientHandler::ShowDevTools, this,
+                                       browser, inspect_element_at));
     return;
   }
 
@@ -1015,18 +1021,19 @@ void ClientHandler::ShowSSLInformation(CefRefPtr<CefBrowser> browser) {
 
   ss << "</body></html>";
 
-  RootWindowConfig config;
-  config.with_controls = false;
-  config.with_osr = is_osr();
-  config.url = test_runner::GetDataURI(ss.str(), "text/html");
-  MainContext::Get()->GetRootWindowManager()->CreateRootWindow(config);
+  auto config = std::make_unique<RootWindowConfig>();
+  config->with_controls = false;
+  config->with_osr = is_osr();
+  config->url = test_runner::GetDataURI(ss.str(), "text/html");
+  MainContext::Get()->GetRootWindowManager()->CreateRootWindow(
+      std::move(config));
 }
 
 void ClientHandler::SetStringResource(const std::string& page,
                                       const std::string& data) {
   if (!CefCurrentlyOn(TID_IO)) {
-    CefPostTask(TID_IO, base::Bind(&ClientHandler::SetStringResource, this,
-                                   page, data));
+    CefPostTask(TID_IO, base::BindOnce(&ClientHandler::SetStringResource, this,
+                                       page, data));
     return;
   }
 
@@ -1053,7 +1060,7 @@ void ClientHandler::NotifyBrowserCreated(CefRefPtr<CefBrowser> browser) {
   if (!CURRENTLY_ON_MAIN_THREAD()) {
     // Execute this method on the main thread.
     MAIN_POST_CLOSURE(
-        base::Bind(&ClientHandler::NotifyBrowserCreated, this, browser));
+        base::BindOnce(&ClientHandler::NotifyBrowserCreated, this, browser));
     return;
   }
 
@@ -1065,7 +1072,7 @@ void ClientHandler::NotifyBrowserClosing(CefRefPtr<CefBrowser> browser) {
   if (!CURRENTLY_ON_MAIN_THREAD()) {
     // Execute this method on the main thread.
     MAIN_POST_CLOSURE(
-        base::Bind(&ClientHandler::NotifyBrowserClosing, this, browser));
+        base::BindOnce(&ClientHandler::NotifyBrowserClosing, this, browser));
     return;
   }
 
@@ -1077,7 +1084,7 @@ void ClientHandler::NotifyBrowserClosed(CefRefPtr<CefBrowser> browser) {
   if (!CURRENTLY_ON_MAIN_THREAD()) {
     // Execute this method on the main thread.
     MAIN_POST_CLOSURE(
-        base::Bind(&ClientHandler::NotifyBrowserClosed, this, browser));
+        base::BindOnce(&ClientHandler::NotifyBrowserClosed, this, browser));
     return;
   }
 
@@ -1088,7 +1095,7 @@ void ClientHandler::NotifyBrowserClosed(CefRefPtr<CefBrowser> browser) {
 void ClientHandler::NotifyAddress(const CefString& url) {
   if (!CURRENTLY_ON_MAIN_THREAD()) {
     // Execute this method on the main thread.
-    MAIN_POST_CLOSURE(base::Bind(&ClientHandler::NotifyAddress, this, url));
+    MAIN_POST_CLOSURE(base::BindOnce(&ClientHandler::NotifyAddress, this, url));
     return;
   }
 
@@ -1099,7 +1106,7 @@ void ClientHandler::NotifyAddress(const CefString& url) {
 void ClientHandler::NotifyTitle(const CefString& title) {
   if (!CURRENTLY_ON_MAIN_THREAD()) {
     // Execute this method on the main thread.
-    MAIN_POST_CLOSURE(base::Bind(&ClientHandler::NotifyTitle, this, title));
+    MAIN_POST_CLOSURE(base::BindOnce(&ClientHandler::NotifyTitle, this, title));
     return;
   }
 
@@ -1110,7 +1117,8 @@ void ClientHandler::NotifyTitle(const CefString& title) {
 void ClientHandler::NotifyFavicon(CefRefPtr<CefImage> image) {
   if (!CURRENTLY_ON_MAIN_THREAD()) {
     // Execute this method on the main thread.
-    MAIN_POST_CLOSURE(base::Bind(&ClientHandler::NotifyFavicon, this, image));
+    MAIN_POST_CLOSURE(
+        base::BindOnce(&ClientHandler::NotifyFavicon, this, image));
     return;
   }
 
@@ -1122,7 +1130,7 @@ void ClientHandler::NotifyFullscreen(bool fullscreen) {
   if (!CURRENTLY_ON_MAIN_THREAD()) {
     // Execute this method on the main thread.
     MAIN_POST_CLOSURE(
-        base::Bind(&ClientHandler::NotifyFullscreen, this, fullscreen));
+        base::BindOnce(&ClientHandler::NotifyFullscreen, this, fullscreen));
     return;
   }
 
@@ -1134,7 +1142,7 @@ void ClientHandler::NotifyAutoResize(const CefSize& new_size) {
   if (!CURRENTLY_ON_MAIN_THREAD()) {
     // Execute this method on the main thread.
     MAIN_POST_CLOSURE(
-        base::Bind(&ClientHandler::NotifyAutoResize, this, new_size));
+        base::BindOnce(&ClientHandler::NotifyAutoResize, this, new_size));
     return;
   }
 
@@ -1147,8 +1155,8 @@ void ClientHandler::NotifyLoadingState(bool isLoading,
                                        bool canGoForward) {
   if (!CURRENTLY_ON_MAIN_THREAD()) {
     // Execute this method on the main thread.
-    MAIN_POST_CLOSURE(base::Bind(&ClientHandler::NotifyLoadingState, this,
-                                 isLoading, canGoBack, canGoForward));
+    MAIN_POST_CLOSURE(base::BindOnce(&ClientHandler::NotifyLoadingState, this,
+                                     isLoading, canGoBack, canGoForward));
     return;
   }
 
@@ -1161,7 +1169,7 @@ void ClientHandler::NotifyDraggableRegions(
   if (!CURRENTLY_ON_MAIN_THREAD()) {
     // Execute this method on the main thread.
     MAIN_POST_CLOSURE(
-        base::Bind(&ClientHandler::NotifyDraggableRegions, this, regions));
+        base::BindOnce(&ClientHandler::NotifyDraggableRegions, this, regions));
     return;
   }
 
@@ -1172,7 +1180,8 @@ void ClientHandler::NotifyDraggableRegions(
 void ClientHandler::NotifyTakeFocus(bool next) {
   if (!CURRENTLY_ON_MAIN_THREAD()) {
     // Execute this method on the main thread.
-    MAIN_POST_CLOSURE(base::Bind(&ClientHandler::NotifyTakeFocus, this, next));
+    MAIN_POST_CLOSURE(
+        base::BindOnce(&ClientHandler::NotifyTakeFocus, this, next));
     return;
   }
 

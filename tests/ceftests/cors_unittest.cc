@@ -6,7 +6,7 @@
 #include <set>
 #include <vector>
 
-#include "include/base/cef_bind.h"
+#include "include/base/cef_callback.h"
 #include "include/cef_callback.h"
 #include "include/cef_origin_whitelist.h"
 #include "include/cef_scheme.h"
@@ -82,6 +82,23 @@ std::string GetOrigin(HandlerType handler) {
       // A scheme that isn't registered anywhere is treated as a non-standard
       // scheme.
       return "customstdunregistered://corstest";
+  }
+  NOTREACHED();
+  return std::string();
+}
+
+std::string GetScheme(HandlerType handler) {
+  switch (handler) {
+    case HandlerType::SERVER:
+      return test_server::kServerScheme;
+    case HandlerType::HTTP_SCHEME:
+      return "https";
+    case HandlerType::CUSTOM_STANDARD_SCHEME:
+      return "customstdfetch";
+    case HandlerType::CUSTOM_NONSTANDARD_SCHEME:
+      return "customnonstd";
+    case HandlerType::CUSTOM_UNREGISTERED_SCHEME:
+      return "customstdunregistered";
   }
   NOTREACHED();
   return std::string();
@@ -277,24 +294,22 @@ struct TestSetup {
 
 class TestServerObserver : public test_server::ObserverHelper {
  public:
-  typedef base::Callback<bool()> CheckDoneCallback;
-
   TestServerObserver(TestSetup* setup,
-                     const base::Closure& ready_callback,
-                     const base::Closure& done_callback)
+                     base::OnceClosure ready_callback,
+                     base::OnceClosure done_callback)
       : setup_(setup),
-        ready_callback_(ready_callback),
-        done_callback_(done_callback),
+        ready_callback_(std::move(ready_callback)),
+        done_callback_(std::move(done_callback)),
         weak_ptr_factory_(this) {
     DCHECK(setup);
     Initialize();
   }
 
-  ~TestServerObserver() override { done_callback_.Run(); }
+  ~TestServerObserver() override { std::move(done_callback_).Run(); }
 
   void OnInitialized(const std::string& server_origin) override {
     CEF_REQUIRE_UI_THREAD();
-    ready_callback_.Run();
+    std::move(ready_callback_).Run();
   }
 
   bool OnHttpRequest(CefRefPtr<CefServer> server,
@@ -325,8 +340,8 @@ class TestServerObserver : public test_server::ObserverHelper {
 
  private:
   TestSetup* const setup_;
-  const base::Closure ready_callback_;
-  const base::Closure done_callback_;
+  base::OnceClosure ready_callback_;
+  base::OnceClosure done_callback_;
 
   base::WeakPtrFactory<TestServerObserver> weak_ptr_factory_;
 
@@ -340,7 +355,7 @@ class CorsTestHandler : public RoutingTestHandler {
   }
 
   void RunTest() override {
-    StartServer(base::Bind(&CorsTestHandler::TriggerCreateBrowser, this));
+    StartServer(base::BindOnce(&CorsTestHandler::TriggerCreateBrowser, this));
 
     // Time out the test after a reasonable period of time.
     SetTestTimeout();
@@ -483,7 +498,8 @@ class CorsTestHandler : public RoutingTestHandler {
   }
 
   void TriggerDestroyTestIfDone() {
-    CefPostTask(TID_UI, base::Bind(&CorsTestHandler::DestroyTestIfDone, this));
+    CefPostTask(TID_UI,
+                base::BindOnce(&CorsTestHandler::DestroyTestIfDone, this));
   }
 
   void DestroyTestIfDone() {
@@ -497,21 +513,22 @@ class CorsTestHandler : public RoutingTestHandler {
     }
   }
 
-  void StartServer(const base::Closure& next_step) {
+  void StartServer(base::OnceClosure next_step) {
     if (!CefCurrentlyOn(TID_UI)) {
-      CefPostTask(TID_UI,
-                  base::Bind(&CorsTestHandler::StartServer, this, next_step));
+      CefPostTask(TID_UI, base::BindOnce(&CorsTestHandler::StartServer, this,
+                                         std::move(next_step)));
       return;
     }
 
     if (!setup_->NeedsServer()) {
-      next_step.Run();
+      std::move(next_step).Run();
       return;
     }
 
     // Will delete itself after the server stops.
     server_ = new TestServerObserver(
-        setup_, next_step, base::Bind(&CorsTestHandler::StoppedServer, this));
+        setup_, std::move(next_step),
+        base::BindOnce(&CorsTestHandler::StoppedServer, this));
   }
 
   void StopServer() {
@@ -547,7 +564,7 @@ class CorsTestHandler : public RoutingTestHandler {
     DCHECK(setup_->clear_cookies);
     test_request::GetAllCookies(
         CefCookieManager::GetGlobalManager(nullptr), /*delete_cookies=*/true,
-        base::Bind(&CorsTestHandler::ClearedCookies, this));
+        base::BindOnce(&CorsTestHandler::ClearedCookies, this));
   }
 
   void ClearedCookies(const test_request::CookieVector& cookies) {
@@ -1159,9 +1176,9 @@ void SetupExecRequest(ExecMode mode,
           "' has been blocked by CORS policy: Cross origin requests are only "
           "supported for protocol schemes:");
     } else {
-      setup->AddConsoleMessage(
-          "Fetch API cannot load " + sub_url +
-          ". URL scheme must be \"http\" or \"https\" for CORS request.");
+      setup->AddConsoleMessage("Fetch API cannot load " + sub_url +
+                               ". URL scheme \"" + GetScheme(sub_handler) +
+                               "\" is not supported.");
     }
   } else {
     // Expect the (possibly cross-origin) XHR to be allowed.
@@ -1181,18 +1198,6 @@ void SetupExecRequest(ExecMode mode,
                                std::string());
       preflight_resource->InitPreflight(main_handler);
       setup->AddResource(preflight_resource);
-
-      if (IsNonStandardType(main_handler) && add_header) {
-        setup->AddConsoleMessage(
-            "The website requested a subresource from a network that it could "
-            "only access because of its users' privileged network position. "
-            "These requests expose non-public devices and servers to the "
-            "internet, increasing the risk of a cross-site request forgery "
-            "(CSRF) attack, and/or information leakage. To mitigate these "
-            "risks, Chrome deprecates requests to non-public subresources when "
-            "initiated from non-secure contexts, and will start blocking them "
-            "in Chrome 92 (July 2021)");
-      }
     } else {
       // The server will not handle the preflight request. Expect the
       // cross-origin XHR to be blocked.

@@ -166,14 +166,18 @@ bool CefBrowserPlatformDelegateNativeMac::CreateHostWindow() {
 
   NSView* parentView =
       CAST_CEF_WINDOW_HANDLE_TO_NSVIEW(window_info_.parent_view);
-  NSRect contentRect = {{window_info_.x, window_info_.y},
-                        {window_info_.width, window_info_.height}};
+  NSRect contentRect = {{static_cast<CGFloat>(window_info_.bounds.x),
+                         static_cast<CGFloat>(window_info_.bounds.y)},
+                        {static_cast<CGFloat>(window_info_.bounds.width),
+                         static_cast<CGFloat>(window_info_.bounds.height)}};
   if (parentView == nil) {
     // Create a new window.
     NSRect screen_rect = [[NSScreen mainScreen] visibleFrame];
     NSRect window_rect = {
-        {window_info_.x, screen_rect.size.height - window_info_.y},
-        {window_info_.width, window_info_.height}};
+        {static_cast<CGFloat>(window_info_.bounds.x),
+         screen_rect.size.height - static_cast<CGFloat>(window_info_.bounds.y)},
+        {static_cast<CGFloat>(window_info_.bounds.width),
+         static_cast<CGFloat>(window_info_.bounds.height)}};
     if (window_rect.size.width == 0)
       window_rect.size.width = 750;
     if (window_rect.size.height == 0)
@@ -306,7 +310,7 @@ void CefBrowserPlatformDelegateNativeMac::SendTouchEvent(
   NOTIMPLEMENTED();
 }
 
-void CefBrowserPlatformDelegateNativeMac::SendFocusEvent(bool setFocus) {
+void CefBrowserPlatformDelegateNativeMac::SetFocus(bool setFocus) {
   auto view = GetHostView();
   if (view) {
     view->SetActive(setFocus);
@@ -328,7 +332,8 @@ gfx::Point CefBrowserPlatformDelegateNativeMac::GetScreenPoint(
   NSView* nsview = CAST_CEF_WINDOW_HANDLE_TO_NSVIEW(window_info_.parent_view);
   if (nsview) {
     NSRect bounds = [nsview bounds];
-    NSPoint view_pt = {view.x(), bounds.size.height - view.y()};
+    NSPoint view_pt = {static_cast<CGFloat>(view.x()),
+                       bounds.size.height - static_cast<CGFloat>(view.y())};
     NSPoint window_pt = [nsview convertPoint:view_pt toView:nil];
     NSPoint screen_pt =
         ui::ConvertPointFromWindowToScreen([nsview window], window_pt);
@@ -554,7 +559,7 @@ void CefBrowserPlatformDelegateNativeMac::TranslateWebMouseEvent(
 
   // timestamp
   result.SetTimeStamp(base::TimeTicks() +
-                      base::TimeDelta::FromSeconds(currentEventTimestamp()));
+                      base::Seconds(currentEventTimestamp()));
 
   result.pointer_type = blink::WebPointerProperties::PointerType::kMouse;
 }

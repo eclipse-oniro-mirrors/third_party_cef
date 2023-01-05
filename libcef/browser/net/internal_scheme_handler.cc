@@ -22,7 +22,7 @@ namespace scheme {
 namespace {
 
 base::FilePath FilePathFromASCII(const std::string& str) {
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   return base::FilePath(base::ASCIIToWide(str));
 #else
   return base::FilePath(str);
@@ -42,6 +42,8 @@ std::string GetMimeType(const std::string& filename) {
   // Check for newer extensions used by internal resources but not yet
   // recognized by the mime type detector.
   const std::string& extension = CefString(file_path.FinalExtension());
+  if (extension == ".md")
+    return "text/markdown";
   if (extension == ".woff2")
     return "application/font-woff2";
 
@@ -52,6 +54,9 @@ std::string GetMimeType(const std::string& filename) {
 class RedirectHandler : public CefResourceHandler {
  public:
   explicit RedirectHandler(const GURL& url) : url_(url) {}
+
+  RedirectHandler(const RedirectHandler&) = delete;
+  RedirectHandler& operator=(const RedirectHandler&) = delete;
 
   bool Open(CefRefPtr<CefRequest> request,
             bool& handle_request,
@@ -82,7 +87,6 @@ class RedirectHandler : public CefResourceHandler {
   GURL url_;
 
   IMPLEMENT_REFCOUNTING(RedirectHandler);
-  DISALLOW_COPY_AND_ASSIGN(RedirectHandler);
 };
 
 class InternalHandler : public CefResourceHandler {
@@ -91,6 +95,9 @@ class InternalHandler : public CefResourceHandler {
                   CefRefPtr<CefStreamReader> reader,
                   int size)
       : mime_type_(mime_type), reader_(reader), size_(size) {}
+
+  InternalHandler(const InternalHandler&) = delete;
+  InternalHandler& operator=(const InternalHandler&) = delete;
 
   bool Open(CefRefPtr<CefRequest> request,
             bool& handle_request,
@@ -135,7 +142,6 @@ class InternalHandler : public CefResourceHandler {
   int size_;
 
   IMPLEMENT_REFCOUNTING(InternalHandler);
-  DISALLOW_COPY_AND_ASSIGN(InternalHandler);
 };
 
 class InternalHandlerFactory : public CefSchemeHandlerFactory {
@@ -143,6 +149,9 @@ class InternalHandlerFactory : public CefSchemeHandlerFactory {
   explicit InternalHandlerFactory(
       std::unique_ptr<InternalHandlerDelegate> delegate)
       : delegate_(std::move(delegate)) {}
+
+  InternalHandlerFactory(const InternalHandlerFactory&) = delete;
+  InternalHandlerFactory& operator=(const InternalHandlerFactory&) = delete;
 
   CefRefPtr<CefResourceHandler> Create(CefRefPtr<CefBrowser> browser,
                                        CefRefPtr<CefFrame> frame,
@@ -190,7 +199,6 @@ class InternalHandlerFactory : public CefSchemeHandlerFactory {
   std::unique_ptr<InternalHandlerDelegate> delegate_;
 
   IMPLEMENT_REFCOUNTING(InternalHandlerFactory);
-  DISALLOW_COPY_AND_ASSIGN(InternalHandlerFactory);
 };
 
 }  // namespace

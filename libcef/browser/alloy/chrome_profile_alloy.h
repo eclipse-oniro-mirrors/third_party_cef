@@ -16,6 +16,10 @@
 class ChromeProfileAlloy : public Profile {
  public:
   ChromeProfileAlloy();
+
+  ChromeProfileAlloy(const ChromeProfileAlloy&) = delete;
+  ChromeProfileAlloy& operator=(const ChromeProfileAlloy&) = delete;
+
   ~ChromeProfileAlloy() override;
 
  protected:
@@ -35,27 +39,21 @@ class ChromeProfileAlloy : public Profile {
   bool HasAnyOffTheRecordProfile() override;
   Profile* GetOriginalProfile() override;
   const Profile* GetOriginalProfile() const override;
-  bool IsSupervised() const override;
   bool IsChild() const override;
   ExtensionSpecialStoragePolicy* GetExtensionSpecialStoragePolicy() override;
-  PrefService* GetOffTheRecordPrefs() override;
   bool IsSameOrParent(Profile* profile) override;
   base::Time GetStartTime() const override;
   base::FilePath last_selected_directory() override;
   void set_last_selected_directory(const base::FilePath& path) override;
   GURL GetHomePage() override;
   bool WasCreatedByVersionOrLater(const std::string& version) override;
-  void SetExitType(ExitType exit_type) override;
-  ExitType GetLastSessionExitType() const override;
   base::Time GetCreationTime() const override;
   void SetCreationTimeForTesting(base::Time creation_time) override;
-  void RecordMainFrameNavigation() override;
+  void RecordPrimaryMainFrameNavigation() override;
   bool IsSignedIn() override;
 
  private:
   std::unique_ptr<variations::VariationsClient> variations_client_;
-
-  DISALLOW_COPY_AND_ASSIGN(ChromeProfileAlloy);
 };
 
 #endif  // CEF_LIBCEF_BROWSER_ALLOY_CHROME_PROFILE_ALLOY_H_

@@ -174,44 +174,41 @@ def create_readme():
     sys.stdout.write('Creating README.TXT file.\n')
 
 
-def create_fuzed_gtest(tests_dir):
-  """ Generate a fuzed version of gtest and build the expected directory structure. """
-  src_gtest_dir = os.path.join(src_dir, 'third_party', 'googletest', 'src',
-                               'googletest')
-  run('%s fuse_gtest_files.py \"%s\"' % (sys.executable, tests_dir),
-      os.path.join(src_gtest_dir, 'scripts'))
-
+def copy_gtest(tests_dir):
+  """ Copy GTest files to the expected directory structure. """
   if not options.quiet:
     sys.stdout.write('Building gtest directory structure.\n')
 
+  src_gtest_dir = os.path.join(cef_dir, 'tools', 'distrib', 'gtest')
   target_gtest_dir = os.path.join(tests_dir, 'gtest')
-  gtest_header = os.path.join(target_gtest_dir, 'gtest.h')
-  gtest_cpp = os.path.join(target_gtest_dir, 'gtest-all.cc')
-
-  if not os.path.exists(gtest_header):
-    raise Exception('Generated file not found: %s' % gtest_header)
-  if not os.path.exists(gtest_cpp):
-    raise Exception('Generated file not found: %s' % gtest_cpp)
 
   # gtest header file at tests/gtest/include/gtest/gtest.h
   target_gtest_header_dir = os.path.join(target_gtest_dir, 'include', 'gtest')
   make_dir(target_gtest_header_dir, options.quiet)
-  move_file(gtest_header, target_gtest_header_dir, options.quiet)
+  copy_file(
+      os.path.join(src_gtest_dir, 'gtest.h'), target_gtest_header_dir,
+      options.quiet)
 
   # gtest source file at tests/gtest/src/gtest-all.cc
   target_gtest_cpp_dir = os.path.join(target_gtest_dir, 'src')
   make_dir(target_gtest_cpp_dir, options.quiet)
-  move_file(gtest_cpp, target_gtest_cpp_dir, options.quiet)
+  copy_file(
+      os.path.join(src_gtest_dir, 'gtest-all.cc'), target_gtest_cpp_dir,
+      options.quiet)
 
   # gtest LICENSE file at tests/gtest/LICENSE
   copy_file(
-      os.path.join(src_gtest_dir, os.pardir, 'LICENSE'), target_gtest_dir,
-      options.quiet)
+      os.path.join(src_gtest_dir, 'LICENSE'), target_gtest_dir, options.quiet)
 
   # CEF README file at tests/gtest/README.cef
   copy_file(
-      os.path.join(cef_dir, 'tests', 'gtest', 'README.cef.in'),
+      os.path.join(src_gtest_dir, 'README.cef'),
       os.path.join(target_gtest_dir, 'README.cef'), options.quiet)
+
+  # Copy tests/gtest/teamcity files
+  copy_dir(
+      os.path.join(cef_dir, 'tests', 'gtest', 'teamcity'),
+      os.path.join(target_gtest_dir, 'teamcity'), options.quiet)
 
 
 def transfer_gypi_files(src_dir, gypi_paths, gypi_path_prefix, dst_dir, quiet):
@@ -722,6 +719,7 @@ if mode == 'standard' or mode == 'minimal':
 
   # Transfer generated include files.
   generated_includes = [
+      'cef_config.h',
       'cef_pack_resources.h',
       'cef_pack_strings.h',
   ]
@@ -819,8 +817,8 @@ if mode == 'standard':
   transfer_gypi_files(cef_dir, cef_paths2['ceftests_sources_common'], \
                       'tests/ceftests/', ceftests_dir, options.quiet)
 
-  # create the fuzed gtest version
-  create_fuzed_gtest(tests_dir)
+  # copy GTest files
+  copy_gtest(tests_dir)
 
   # process cmake templates
   if not options.ozone:
@@ -855,6 +853,9 @@ if platform == 'windows':
       {'path': 'libGLESv2.dll'},
       {'path': 'snapshot_blob.bin', 'conditional': True},
       {'path': 'v8_context_snapshot.bin', 'conditional': True},
+      {'path': 'vk_swiftshader.dll'},
+      {'path': 'vk_swiftshader_icd.json'},
+      {'path': 'vulkan-1.dll'},
       {'path': 'swiftshader\\libEGL.dll'},
       {'path': 'swiftshader\\libGLESv2.dll'},
   ]
@@ -886,6 +887,12 @@ if platform == 'windows':
       'obj\\base\\win\\pe_image.lib',
       cef_sandbox_lib,
       'obj\\sandbox\\win\\sandbox.lib',
+      'obj\\third_party\\abseil-cpp\\absl\\base\\**\\*.obj',
+      'obj\\third_party\\abseil-cpp\\absl\\debugging\\**\\*.obj',
+      'obj\\third_party\\abseil-cpp\\absl\\numeric\\**\\*.obj',
+      'obj\\third_party\\abseil-cpp\\absl\\synchronization\\**\\*.obj',
+      'obj\\third_party\\abseil-cpp\\absl\\time\\**\\*.obj',
+      'obj\\third_party\\abseil-cpp\\absl\\types\\**\\*.obj',
   ]
 
   # Generate the cef_sandbox.lib merged library. A separate *_sandbox build
@@ -1170,8 +1177,11 @@ elif platform == 'linux':
       {'path': libcef_so},
       {'path': 'libEGL.so'},
       {'path': 'libGLESv2.so'},
+      {'path': 'libvk_swiftshader.so'},
+      {'path': 'libvulkan.so.1'},
       {'path': 'snapshot_blob.bin', 'conditional': True},
       {'path': 'v8_context_snapshot.bin', 'conditional': True},
+      {'path': 'vk_swiftshader_icd.json'},
       {'path': 'swiftshader/libEGL.so'},
       {'path': 'swiftshader/libGLESv2.so'},
   ]

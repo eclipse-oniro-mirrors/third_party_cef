@@ -44,6 +44,10 @@ class CertPolicy {
 class CefSSLHostStateDelegate : public content::SSLHostStateDelegate {
  public:
   CefSSLHostStateDelegate();
+
+  CefSSLHostStateDelegate(const CefSSLHostStateDelegate&) = delete;
+  CefSSLHostStateDelegate& operator=(const CefSSLHostStateDelegate&) = delete;
+
   ~CefSSLHostStateDelegate() override;
 
   // SSLHostStateDelegate methods:
@@ -64,6 +68,10 @@ class CefSSLHostStateDelegate : public content::SSLHostStateDelegate {
   bool DidHostRunInsecureContent(const std::string& host,
                                  int child_id,
                                  InsecureContentType content_type) override;
+  void AllowHttpForHost(const std::string& host,
+                        content::WebContents* web_content) override;
+  bool IsHttpAllowedForHost(const std::string& host,
+                            content::WebContents* web_content) override;
   void RevokeUserAllowExceptions(const std::string& host) override;
   bool HasAllowException(const std::string& host,
                          content::WebContents* web_contents) override;
@@ -71,8 +79,6 @@ class CefSSLHostStateDelegate : public content::SSLHostStateDelegate {
  private:
   // Certificate policies for each host.
   std::map<std::string, internal::CertPolicy> cert_policy_for_host_;
-
-  DISALLOW_COPY_AND_ASSIGN(CefSSLHostStateDelegate);
 };
 
 #endif  // CEF_LIBCEF_BROWSER_SSL_HOST_STATE_DELEGATE_H_

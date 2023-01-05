@@ -19,6 +19,10 @@ class CefHostDisplayClientOSR : public viz::HostDisplayClient {
  public:
   CefHostDisplayClientOSR(CefRenderWidgetHostViewOSR* const view,
                           gfx::AcceleratedWidget widget);
+
+  CefHostDisplayClientOSR(const CefHostDisplayClientOSR&) = delete;
+  CefHostDisplayClientOSR& operator=(const CefHostDisplayClientOSR&) = delete;
+
   ~CefHostDisplayClientOSR() override;
 
   void SetActive(bool active);
@@ -33,15 +37,13 @@ class CefHostDisplayClientOSR : public viz::HostDisplayClient {
       mojo::PendingReceiver<viz::mojom::LayeredWindowUpdater> receiver)
       override;
 
-#if defined(OS_LINUX)
+#if BUILDFLAG(IS_LINUX)
   void DidCompleteSwapWithNewSize(const gfx::Size& size) override;
 #endif
 
   CefRenderWidgetHostViewOSR* const view_;
   std::unique_ptr<CefLayeredWindowUpdaterOSR> layered_window_updater_;
   bool active_ = false;
-
-  DISALLOW_COPY_AND_ASSIGN(CefHostDisplayClientOSR);
 };
 
 #endif  // CEF_LIBCEF_BROWSER_OSR_HOST_DISPLAY_CLIENT_OSR_H_
