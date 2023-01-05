@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=f17d39aa48d464eddc04143796492dd36563f773$
+// $hash=2ff6e97535ed312ab7639e516c796524d1aa112c$
 //
 
 #ifndef CEF_LIBCEF_DLL_CTOCPP_MEDIA_ROUTER_CTOCPP_H_
@@ -35,13 +35,13 @@ class CefMediaRouterCToCpp : public CefCToCppRefCounted<CefMediaRouterCToCpp,
 
   // CefMediaRouter methods.
   CefRefPtr<CefRegistration> AddObserver(
-      CefRefPtr<CefMediaObserver> observer) OVERRIDE;
-  CefRefPtr<CefMediaSource> GetSource(const CefString& urn) OVERRIDE;
-  void NotifyCurrentSinks() OVERRIDE;
+      CefRefPtr<CefMediaObserver> observer) override;
+  CefRefPtr<CefMediaSource> GetSource(const CefString& urn) override;
+  void NotifyCurrentSinks() override;
   void CreateRoute(CefRefPtr<CefMediaSource> source,
                    CefRefPtr<CefMediaSink> sink,
-                   CefRefPtr<CefMediaRouteCreateCallback> callback) OVERRIDE;
-  void NotifyCurrentRoutes() OVERRIDE;
+                   CefRefPtr<CefMediaRouteCreateCallback> callback) override;
+  void NotifyCurrentRoutes() override;
 };
 
 #endif  // CEF_LIBCEF_DLL_CTOCPP_MEDIA_ROUTER_CTOCPP_H_

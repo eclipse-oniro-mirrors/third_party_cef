@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=036ba78ec1797ee75002a5562fd0b0b97dff7392$
+// $hash=8f505c768b727bd821e5d619227533b45fd6029b$
 //
 
 #ifndef CEF_LIBCEF_DLL_CTOCPP_JSDIALOG_CALLBACK_CTOCPP_H_
@@ -35,7 +35,7 @@ class CefJSDialogCallbackCToCpp
   virtual ~CefJSDialogCallbackCToCpp();
 
   // CefJSDialogCallback methods.
-  void Continue(bool success, const CefString& user_input) OVERRIDE;
+  void Continue(bool success, const CefString& user_input) override;
 };
 
 #endif  // CEF_LIBCEF_DLL_CTOCPP_JSDIALOG_CALLBACK_CTOCPP_H_

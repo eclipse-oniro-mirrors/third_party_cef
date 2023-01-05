@@ -66,7 +66,8 @@ class CefWebURLLoaderClient : public blink::WebURLLoaderClient {
                           const WebString& new_method,
                           const WebURLResponse& passed_redirect_response,
                           bool& report_raw_headers,
-                          std::vector<std::string>* removed_headers) override;
+                          std::vector<std::string>* removed_headers,
+                          bool insecure_scheme_was_upgraded) override;
 
  protected:
   // The context_ pointer will outlive this object.
@@ -147,7 +148,6 @@ class CefRenderURLRequest::Context
     loader_ = frame_impl->CreateURLLoader();
     loader_->LoadAsynchronously(
         std::move(resource_request), /*extra_data=*/nullptr,
-        /*requestor_id=*/0,
         /*no_mime_sniffing=*/false,
         frame_impl->CreateResourceLoadInfoNotifierWrapper(), url_client_.get());
     return true;
@@ -399,7 +399,8 @@ bool CefWebURLLoaderClient::WillFollowRedirect(
     const WebString& new_method,
     const WebURLResponse& passed_redirect_response,
     bool& report_raw_headers,
-    std::vector<std::string>* removed_headers) {
+    std::vector<std::string>* removed_headers,
+    bool insecure_scheme_was_upgraded) {
   if (request_flags_ & UR_FLAG_STOP_ON_REDIRECT) {
     context_->OnStopRedirect(new_url, passed_redirect_response);
     return false;

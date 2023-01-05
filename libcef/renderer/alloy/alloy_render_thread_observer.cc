@@ -37,7 +37,7 @@ AlloyRenderThreadObserver::GetDynamicParams() {
 
 void AlloyRenderThreadObserver::RegisterMojoInterfaces(
     blink::AssociatedInterfaceRegistry* associated_interfaces) {
-  associated_interfaces->AddInterface(base::Bind(
+  associated_interfaces->AddInterface(base::BindRepeating(
       &AlloyRenderThreadObserver::OnRendererConfigurationAssociatedRequest,
       base::Unretained(this)));
 }
@@ -50,7 +50,9 @@ void AlloyRenderThreadObserver::UnregisterMojoInterfaces(
 
 void AlloyRenderThreadObserver::SetInitialConfiguration(
     bool is_incognito_process,
-    mojo::PendingReceiver<chrome::mojom::ChromeOSListener> chromeos_listener) {
+    mojo::PendingReceiver<chrome::mojom::ChromeOSListener> chromeos_listener,
+    mojo::PendingRemote<content_settings::mojom::ContentSettingsManager>
+        content_settings_manager) {
   is_incognito_process_ = is_incognito_process;
 }
 

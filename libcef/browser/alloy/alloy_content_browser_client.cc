@@ -5,6 +5,7 @@
 #include "libcef/browser/alloy/alloy_content_browser_client.h"
 
 #include <algorithm>
+#include <tuple>
 #include <utility>
 
 #include "include/cef_version.h"
@@ -12,9 +13,10 @@
 #include "libcef/browser/alloy/alloy_browser_host_impl.h"
 #include "libcef/browser/alloy/alloy_browser_main.h"
 #include "libcef/browser/browser_context.h"
+#include "libcef/browser/browser_frame.h"
 #include "libcef/browser/browser_info.h"
 #include "libcef/browser/browser_info_manager.h"
-#include "libcef/browser/browser_message_filter.h"
+#include "libcef/browser/browser_manager.h"
 #include "libcef/browser/browser_platform_delegate.h"
 #include "libcef/browser/context.h"
 #include "libcef/browser/devtools/devtools_manager_delegate.h"
@@ -27,18 +29,18 @@
 #include "libcef/browser/net_service/login_delegate.h"
 #include "libcef/browser/net_service/proxy_url_loader_factory.h"
 #include "libcef/browser/net_service/resource_request_handler_wrapper.h"
-#include "libcef/browser/plugins/plugin_service_filter.h"
 #include "libcef/browser/prefs/renderer_prefs.h"
+#include "libcef/browser/printing/print_view_manager.h"
 #include "libcef/browser/speech_recognition_manager_delegate.h"
 #include "libcef/browser/ssl_info_impl.h"
 #include "libcef/browser/thread_util.h"
 #include "libcef/browser/x509_certificate_impl.h"
 #include "libcef/common/alloy/alloy_content_client.h"
 #include "libcef/common/app_manager.h"
-#include "libcef/common/cef_messages.h"
 #include "libcef/common/cef_switches.h"
 #include "libcef/common/command_line_impl.h"
 #include "libcef/common/extensions/extensions_util.h"
+#include "libcef/common/frame_util.h"
 #include "libcef/common/net/scheme_registration.h"
 #include "libcef/common/request_impl.h"
 
@@ -52,9 +54,12 @@
 #include "cef/grit/cef_resources.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/content_settings/cookie_settings_factory.h"
+#include "chrome/browser/extensions/chrome_content_browser_client_extensions_part.h"
 #include "chrome/browser/net/profile_network_context_service.h"
 #include "chrome/browser/net/profile_network_context_service_factory.h"
 #include "chrome/browser/net/system_network_context_manager.h"
+#include "chrome/browser/pdf/chrome_pdf_stream_delegate.h"
+#include "chrome/browser/plugins/pdf_iframe_navigation_throttle.h"
 #include "chrome/browser/plugins/plugin_info_host_impl.h"
 #include "chrome/browser/plugins/plugin_response_interceptor_url_loader_throttle.h"
 #include "chrome/browser/plugins/plugin_utils.h"
@@ -67,6 +72,7 @@
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/google_url_loader_throttle.h"
+#include "chrome/common/pdf_util.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/browser_resources.h"
@@ -75,6 +81,10 @@
 #include "components/content_settings/core/browser/cookie_settings.h"
 #include "components/embedder_support/switches.h"
 #include "components/embedder_support/user_agent_utils.h"
+#include "components/pdf/browser/pdf_navigation_throttle.h"
+#include "components/pdf/browser/pdf_url_loader_request_interceptor.h"
+#include "components/pdf/browser/pdf_web_contents_helper.h"
+#include "components/pdf/common/internal_plugin_helpers.h"
 #include "components/spellcheck/common/spellcheck.mojom.h"
 #include "components/version_info/version_info.h"
 #include "content/browser/plugin_service_impl.h"
@@ -98,9 +108,12 @@
 #include "content/public/common/storage_quota_params.h"
 #include "content/public/common/url_constants.h"
 #include "content/public/common/user_agent.h"
+#include "crypto/crypto_buildflags.h"
+#include "extensions/browser/event_router.h"
 #include "extensions/browser/extension_message_filter.h"
 #include "extensions/browser/extension_protocols.h"
 #include "extensions/browser/extension_registry.h"
+#include "extensions/browser/extension_web_contents_observer.h"
 #include "extensions/browser/extensions_browser_client.h"
 #include "extensions/browser/guest_view/extensions_guest_view_message_filter.h"
 #include "extensions/browser/guest_view/web_view/web_view_guest.h"
@@ -113,27 +126,24 @@
 #include "mojo/public/cpp/bindings/self_owned_associated_receiver.h"
 #include "net/base/auth.h"
 #include "net/ssl/ssl_cert_request_info.h"
+#include "net/ssl/ssl_private_key.h"
+#include "pdf/pdf_features.h"
 #include "ppapi/host/ppapi_host.h"
 #include "sandbox/policy/switches.h"
 #include "services/network/public/cpp/network_switches.h"
 #include "services/proxy_resolver/public/mojom/proxy_resolver.mojom.h"
 #include "services/service_manager/public/mojom/connector.mojom.h"
 #include "storage/browser/quota/quota_settings.h"
+#include "third_party/blink/public/common/associated_interfaces/associated_interface_registry.h"
 #include "third_party/blink/public/common/web_preferences/web_preferences.h"
-#include "third_party/blink/public/mojom/insecure_input/insecure_input_service.mojom.h"
 #include "third_party/blink/public/mojom/prerender/prerender.mojom.h"
 #include "third_party/blink/public/web/web_window_features.h"
-#include "third_party/widevine/cdm/buildflags.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/ui_base_switches.h"
 #include "url/gurl.h"
 
-#if defined(OS_LINUX)
-#include "libcef/common/widevine_loader.h"
-#endif
-
-#if defined(OS_POSIX) && !defined(OS_MAC)
+#if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC)
 #include "base/debug/leak_annotations.h"
 #include "chrome/common/chrome_paths.h"
 #include "components/crash/content/browser/crash_handler_host_linux.h"
@@ -141,17 +151,17 @@
 #include "content/public/common/content_descriptors.h"
 #endif
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
 #include "net/ssl/client_cert_store_mac.h"
 #include "services/video_capture/public/mojom/constants.mojom.h"
 #endif
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include "net/ssl/client_cert_store_win.h"
 #include "sandbox/win/src/sandbox_policy.h"
 #endif
 
-#if defined(USE_NSS_CERTS)
+#if BUILDFLAG(USE_NSS_CERTS)
 #include "net/ssl/client_cert_store_nss.h"
 #endif
 
@@ -161,12 +171,15 @@
 
 namespace {
 
-class CefQuotaCallbackImpl : public CefRequestCallback {
+class CefQuotaCallbackImpl : public CefCallback {
  public:
   using CallbackType = content::QuotaPermissionContext::PermissionCallback;
 
   explicit CefQuotaCallbackImpl(CallbackType callback)
       : callback_(std::move(callback)) {}
+
+  CefQuotaCallbackImpl(const CefQuotaCallbackImpl&) = delete;
+  CefQuotaCallbackImpl& operator=(const CefQuotaCallbackImpl&) = delete;
 
   ~CefQuotaCallbackImpl() {
     if (!callback_.is_null()) {
@@ -180,22 +193,24 @@ class CefQuotaCallbackImpl : public CefRequestCallback {
     }
   }
 
-  void Continue(bool allow) override {
+  void Continue() override { ContinueNow(true); }
+
+  void Cancel() override { ContinueNow(false); }
+
+  CallbackType Disconnect() WARN_UNUSED_RESULT { return std::move(callback_); }
+
+ private:
+  void ContinueNow(bool allow) {
     if (CEF_CURRENTLY_ON_IOT()) {
       if (!callback_.is_null()) {
         RunNow(std::move(callback_), allow);
       }
     } else {
-      CEF_POST_TASK(CEF_IOT, base::BindOnce(&CefQuotaCallbackImpl::Continue,
+      CEF_POST_TASK(CEF_IOT, base::BindOnce(&CefQuotaCallbackImpl::ContinueNow,
                                             this, allow));
     }
   }
 
-  void Cancel() override { Continue(false); }
-
-  CallbackType Disconnect() WARN_UNUSED_RESULT { return std::move(callback_); }
-
- private:
   static void RunNow(CallbackType callback, bool allow) {
     CEF_REQUIRE_IOT();
     std::move(callback).Run(
@@ -207,16 +222,20 @@ class CefQuotaCallbackImpl : public CefRequestCallback {
   CallbackType callback_;
 
   IMPLEMENT_REFCOUNTING(CefQuotaCallbackImpl);
-  DISALLOW_COPY_AND_ASSIGN(CefQuotaCallbackImpl);
 };
 
-class CefAllowCertificateErrorCallbackImpl : public CefRequestCallback {
+class CefAllowCertificateErrorCallbackImpl : public CefCallback {
  public:
-  typedef base::OnceCallback<void(content::CertificateRequestResultType)>
-      CallbackType;
+  using CallbackType =
+      base::OnceCallback<void(content::CertificateRequestResultType)>;
 
   explicit CefAllowCertificateErrorCallbackImpl(CallbackType callback)
       : callback_(std::move(callback)) {}
+
+  CefAllowCertificateErrorCallbackImpl(
+      const CefAllowCertificateErrorCallbackImpl&) = delete;
+  CefAllowCertificateErrorCallbackImpl& operator=(
+      const CefAllowCertificateErrorCallbackImpl&) = delete;
 
   ~CefAllowCertificateErrorCallbackImpl() {
     if (!callback_.is_null()) {
@@ -232,23 +251,26 @@ class CefAllowCertificateErrorCallbackImpl : public CefRequestCallback {
     }
   }
 
-  void Continue(bool allow) override {
+  void Continue() override { ContinueNow(true); }
+
+  void Cancel() override { ContinueNow(false); }
+
+  CallbackType Disconnect() WARN_UNUSED_RESULT { return std::move(callback_); }
+
+ private:
+  void ContinueNow(bool allow) {
     if (CEF_CURRENTLY_ON_UIT()) {
       if (!callback_.is_null()) {
         RunNow(std::move(callback_), allow);
       }
     } else {
-      CEF_POST_TASK(CEF_UIT,
-                    base::Bind(&CefAllowCertificateErrorCallbackImpl::Continue,
-                               this, allow));
+      CEF_POST_TASK(
+          CEF_UIT,
+          base::BindOnce(&CefAllowCertificateErrorCallbackImpl::ContinueNow,
+                         this, allow));
     }
   }
 
-  void Cancel() override { Continue(false); }
-
-  CallbackType Disconnect() WARN_UNUSED_RESULT { return std::move(callback_); }
-
- private:
   static void RunNow(CallbackType callback, bool allow) {
     CEF_REQUIRE_UIT();
     std::move(callback).Run(
@@ -259,7 +281,6 @@ class CefAllowCertificateErrorCallbackImpl : public CefRequestCallback {
   CallbackType callback_;
 
   IMPLEMENT_REFCOUNTING(CefAllowCertificateErrorCallbackImpl);
-  DISALLOW_COPY_AND_ASSIGN(CefAllowCertificateErrorCallbackImpl);
 };
 
 class CefSelectClientCertificateCallbackImpl
@@ -268,6 +289,11 @@ class CefSelectClientCertificateCallbackImpl
   explicit CefSelectClientCertificateCallbackImpl(
       std::unique_ptr<content::ClientCertificateDelegate> delegate)
       : delegate_(std::move(delegate)) {}
+
+  CefSelectClientCertificateCallbackImpl(
+      const CefSelectClientCertificateCallbackImpl&) = delete;
+  CefSelectClientCertificateCallbackImpl& operator=(
+      const CefSelectClientCertificateCallbackImpl&) = delete;
 
   ~CefSelectClientCertificateCallbackImpl() {
     // If Select has not been called, call it with NULL to continue without any
@@ -329,12 +355,15 @@ class CefSelectClientCertificateCallbackImpl
   std::unique_ptr<content::ClientCertificateDelegate> delegate_;
 
   IMPLEMENT_REFCOUNTING(CefSelectClientCertificateCallbackImpl);
-  DISALLOW_COPY_AND_ASSIGN(CefSelectClientCertificateCallbackImpl);
 };
 
 class CefQuotaPermissionContext : public content::QuotaPermissionContext {
  public:
-  CefQuotaPermissionContext() {}
+  CefQuotaPermissionContext() = default;
+
+  CefQuotaPermissionContext(const CefQuotaPermissionContext&) = delete;
+  CefQuotaPermissionContext& operator=(const CefQuotaPermissionContext&) =
+      delete;
 
   // The callback will be dispatched on the IO thread.
   void RequestQuotaPermission(const content::StorageQuotaParams& params,
@@ -350,13 +379,11 @@ class CefQuotaPermissionContext : public content::QuotaPermissionContext {
     bool handled = false;
 
     CefRefPtr<AlloyBrowserHostImpl> browser =
-        AlloyBrowserHostImpl::GetBrowserForFrameRoute(render_process_id,
-                                                      params.render_frame_id);
-    if (browser.get()) {
-      CefRefPtr<CefClient> client = browser->GetClient();
-      if (client.get()) {
-        CefRefPtr<CefRequestHandler> handler = client->GetRequestHandler();
-        if (handler.get()) {
+        AlloyBrowserHostImpl::GetBrowserForGlobalId(frame_util::MakeGlobalId(
+            render_process_id, params.render_frame_id));
+    if (browser) {
+      if (auto client = browser->GetClient()) {
+        if (auto handler = client->GetRequestHandler()) {
           CefRefPtr<CefQuotaCallbackImpl> callbackImpl(
               new CefQuotaCallbackImpl(std::move(callback)));
           handled = handler->OnQuotaRequest(
@@ -378,12 +405,10 @@ class CefQuotaPermissionContext : public content::QuotaPermissionContext {
   }
 
  private:
-  ~CefQuotaPermissionContext() override {}
-
-  DISALLOW_COPY_AND_ASSIGN(CefQuotaPermissionContext);
+  ~CefQuotaPermissionContext() override = default;
 };
 
-#if defined(OS_POSIX) && !defined(OS_MAC)
+#if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC)
 breakpad::CrashHandlerHostLinux* CreateCrashHandlerHost(
     const std::string& process_type) {
   base::FilePath dumps_path;
@@ -438,7 +463,7 @@ int GetCrashSignalFD(const base::CommandLine& command_line) {
 
   return -1;
 }
-#endif  // defined(OS_POSIX) && !defined(OS_MAC)
+#endif  // BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_MAC)
 
 // From chrome/browser/plugins/chrome_content_browser_client_plugins_part.cc.
 void BindPluginInfoHost(
@@ -463,37 +488,29 @@ base::FilePath GetRootCachePath() {
       CefString(&CefContext::Get()->settings().root_cache_path));
 }
 
-// Register BrowserInterfaceBroker's GetInterface() handler callbacks for
-// chrome-specific document-scoped interfaces.
-// Stub implementations to silence "Empty binder for interface
-// blink.mojom.[Name] for the frame/document scope" errors.
-// Based on chrome/browser/chrome_browser_interface_binders.cc.
-void PopulateChromeFrameBinders(
-    mojo::BinderMapWithContext<content::RenderFrameHost*>* map) {
-  map->Add<blink::mojom::InsecureInputService>(base::BindRepeating(
-      [](content::RenderFrameHost* frame_host,
-         mojo::PendingReceiver<blink::mojom::InsecureInputService> receiver) {
-      }));
+const extensions::Extension* GetEnabledExtensionFromSiteURL(
+    content::BrowserContext* context,
+    const GURL& site_url) {
+  if (!site_url.SchemeIs(extensions::kExtensionScheme))
+    return nullptr;
 
-  map->Add<blink::mojom::PrerenderProcessor>(base::BindRepeating(
-      [](content::RenderFrameHost* frame_host,
-         mojo::PendingReceiver<blink::mojom::PrerenderProcessor> receiver) {}));
+  auto registry = extensions::ExtensionRegistry::Get(context);
+  if (!registry)
+    return nullptr;
+
+  return registry->enabled_extensions().GetByID(site_url.host());
 }
 
 }  // namespace
 
-AlloyContentBrowserClient::AlloyContentBrowserClient() {
-  plugin_service_filter_.reset(new CefPluginServiceFilter);
-  content::PluginServiceImpl::GetInstance()->SetFilter(
-      plugin_service_filter_.get());
-}
+AlloyContentBrowserClient::AlloyContentBrowserClient() = default;
 
-AlloyContentBrowserClient::~AlloyContentBrowserClient() {}
+AlloyContentBrowserClient::~AlloyContentBrowserClient() = default;
 
 std::unique_ptr<content::BrowserMainParts>
 AlloyContentBrowserClient::CreateBrowserMainParts(
-    const content::MainFunctionParams& parameters) {
-  browser_main_parts_ = new AlloyBrowserMainParts(parameters);
+    content::MainFunctionParams parameters) {
+  browser_main_parts_ = new AlloyBrowserMainParts(std::move(parameters));
   return base::WrapUnique(browser_main_parts_);
 }
 
@@ -501,8 +518,6 @@ void AlloyContentBrowserClient::RenderProcessWillLaunch(
     content::RenderProcessHost* host) {
   const int id = host->GetID();
   Profile* profile = Profile::FromBrowserContext(host->GetBrowserContext());
-
-  host->AddFilter(new CefBrowserMessageFilter(id));
 
   if (extensions::ExtensionsEnabled()) {
     host->AddFilter(new extensions::ExtensionMessageFilter(id, profile));
@@ -524,45 +539,67 @@ void AlloyContentBrowserClient::RenderProcessWillLaunch(
 
 bool AlloyContentBrowserClient::ShouldUseProcessPerSite(
     content::BrowserContext* browser_context,
-    const GURL& effective_url) {
-  if (!extensions::ExtensionsEnabled())
-    return false;
+    const GURL& site_url) {
+  if (extensions::ExtensionsEnabled()) {
+    if (auto profile = Profile::FromBrowserContext(browser_context)) {
+      return extensions::ChromeContentBrowserClientExtensionsPart::
+          ShouldUseProcessPerSite(profile, site_url);
+    }
+  }
 
-  if (!effective_url.SchemeIs(extensions::kExtensionScheme))
-    return false;
-
-  extensions::ExtensionRegistry* registry =
-      extensions::ExtensionRegistry::Get(browser_context);
-  if (!registry)
-    return false;
-
-  const extensions::Extension* extension =
-      registry->enabled_extensions().GetByID(effective_url.host());
-  if (!extension)
-    return false;
-
-  // TODO(extensions): Extra checks required if type is TYPE_HOSTED_APP.
-
-  // Hosted apps that have script access to their background page must use
-  // process per site, since all instances can make synchronous calls to the
-  // background window.  Other extensions should use process per site as well.
-  return true;
+  return content::ContentBrowserClient::ShouldUseProcessPerSite(browser_context,
+                                                                site_url);
 }
 
-// Based on
-// ChromeContentBrowserClientExtensionsPart::DoesSiteRequireDedicatedProcess.
+bool AlloyContentBrowserClient::ShouldUseSpareRenderProcessHost(
+    content::BrowserContext* browser_context,
+    const GURL& site_url) {
+  if (extensions::ExtensionsEnabled()) {
+    if (auto profile = Profile::FromBrowserContext(browser_context)) {
+      return extensions::ChromeContentBrowserClientExtensionsPart::
+          ShouldUseSpareRenderProcessHost(profile, site_url);
+    }
+  }
+
+  return content::ContentBrowserClient::ShouldUseSpareRenderProcessHost(
+      browser_context, site_url);
+}
+
 bool AlloyContentBrowserClient::DoesSiteRequireDedicatedProcess(
     content::BrowserContext* browser_context,
     const GURL& effective_site_url) {
-  if (!extensions::ExtensionsEnabled())
-    return false;
+  if (extensions::ExtensionsEnabled()) {
+    return extensions::ChromeContentBrowserClientExtensionsPart::
+        DoesSiteRequireDedicatedProcess(browser_context, effective_site_url);
+  }
 
-  const extensions::Extension* extension =
-      extensions::ExtensionRegistry::Get(browser_context)
-          ->enabled_extensions()
-          .GetExtensionOrAppByURL(effective_site_url);
-  // Isolate all extensions.
-  return extension != nullptr;
+  return content::ContentBrowserClient::DoesSiteRequireDedicatedProcess(
+      browser_context, effective_site_url);
+}
+
+bool AlloyContentBrowserClient::ShouldTreatURLSchemeAsFirstPartyWhenTopLevel(
+    base::StringPiece scheme,
+    bool is_embedded_origin_secure) {
+  // This is needed to bypass the normal SameSite rules for any chrome:// page
+  // embedding a secure origin, regardless of the registrable domains of any
+  // intervening frames. For example, this is needed for browser UI to interact
+  // with SameSite cookies on accounts.google.com, which are used for logging
+  // into Cloud Print from chrome://print, for displaying a list of available
+  // accounts on the NTP (chrome://new-tab-page), etc.
+  if (is_embedded_origin_secure && scheme == content::kChromeUIScheme)
+    return true;
+
+  if (extensions::ExtensionsEnabled())
+    return scheme == extensions::kExtensionScheme;
+
+  return false;
+}
+
+bool AlloyContentBrowserClient::
+    ShouldIgnoreSameSiteCookieRestrictionsWhenTopLevel(
+        base::StringPiece scheme,
+        bool is_embedded_origin_secure) {
+  return is_embedded_origin_secure && scheme == content::kChromeUIScheme;
 }
 
 void AlloyContentBrowserClient::OverrideURLLoaderFactoryParams(
@@ -596,6 +633,7 @@ void AlloyContentBrowserClient::GetAdditionalAllowedSchemesForFileSystem(
       additional_allowed_schemes);
   additional_allowed_schemes->push_back(content::kChromeDevToolsScheme);
   additional_allowed_schemes->push_back(content::kChromeUIScheme);
+  additional_allowed_schemes->push_back(content::kChromeUIUntrustedScheme);
 }
 
 bool AlloyContentBrowserClient::IsWebUIAllowedToMakeNetworkRequests(
@@ -620,17 +658,24 @@ void AlloyContentBrowserClient::SiteInstanceGotProcess(
   if (!extensions::ExtensionsEnabled())
     return;
 
-  // If this isn't an extension renderer there's nothing to do.
-  const extensions::Extension* extension = GetExtension(site_instance);
+  CHECK(site_instance->HasProcess());
+
+  auto context = site_instance->GetBrowserContext();
+
+  // Only add the process to the map if the SiteInstance's site URL is already
+  // a chrome-extension:// URL. This includes hosted apps, except in rare cases
+  // that a URL in the hosted app's extent is not treated as a hosted app (e.g.,
+  // for isolated origins or cross-site iframes). For that case, don't look up
+  // the hosted app's Extension from the site URL using GetExtensionOrAppByURL,
+  // since it isn't treated as a hosted app.
+  const auto extension =
+      GetEnabledExtensionFromSiteURL(context, site_instance->GetSiteURL());
   if (!extension)
     return;
 
-  auto browser_context =
-      static_cast<AlloyBrowserContext*>(site_instance->GetBrowserContext());
-
-  extensions::ProcessMap::Get(browser_context)
-      ->Insert(extension->id(), site_instance->GetProcess()->GetID(),
-               site_instance->GetId());
+  extensions::ProcessMap::Get(context)->Insert(
+      extension->id(), site_instance->GetProcess()->GetID(),
+      site_instance->GetId());
 }
 
 void AlloyContentBrowserClient::SiteInstanceDeleting(
@@ -638,25 +683,22 @@ void AlloyContentBrowserClient::SiteInstanceDeleting(
   if (!extensions::ExtensionsEnabled())
     return;
 
-  // May be NULL during shutdown.
-  if (!extensions::ExtensionsBrowserClient::Get())
-    return;
-
-  // May be NULL during shutdown.
   if (!site_instance->HasProcess())
     return;
 
-  // If this isn't an extension renderer there's nothing to do.
-  const extensions::Extension* extension = GetExtension(site_instance);
+  auto context = site_instance->GetBrowserContext();
+  auto registry = extensions::ExtensionRegistry::Get(context);
+  if (!registry)
+    return;
+
+  auto extension = registry->enabled_extensions().GetExtensionOrAppByURL(
+      site_instance->GetSiteURL());
   if (!extension)
     return;
 
-  auto browser_context =
-      static_cast<AlloyBrowserContext*>(site_instance->GetBrowserContext());
-
-  extensions::ProcessMap::Get(browser_context)
-      ->Remove(extension->id(), site_instance->GetProcess()->GetID(),
-               site_instance->GetId());
+  extensions::ProcessMap::Get(context)->Remove(
+      extension->id(), site_instance->GetProcess()->GetID(),
+      site_instance->GetId());
 }
 
 void AlloyContentBrowserClient::BindHostReceiverForRenderer(
@@ -688,12 +730,11 @@ void AlloyContentBrowserClient::AppendExtraCommandLineSwitches(
     // associated values) if present in the browser command line.
     static const char* const kSwitchNames[] = {
       switches::kDisablePackLoading,
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
       switches::kFrameworkDirPath,
       switches::kMainBundlePath,
 #endif
       switches::kLocalesDirPath,
-      switches::kLogFile,
       switches::kLogSeverity,
       switches::kResourcesDirPath,
       embedder_support::kUserAgent,
@@ -752,18 +793,15 @@ void AlloyContentBrowserClient::AppendExtraCommandLineSwitches(
                                    base::size(kSwitchNames));
   }
 
-#if defined(OS_LINUX)
-  if (process_type == switches::kZygoteProcess) {
-#if BUILDFLAG(ENABLE_WIDEVINE) && BUILDFLAG(ENABLE_LIBRARY_CDMS)
-    if (!browser_cmd->HasSwitch(sandbox::policy::switches::kNoSandbox)) {
-      // Pass the Widevine CDM path to the Zygote process. See comments in
-      // CefWidevineLoader::AddContentDecryptionModules.
-      const base::FilePath& cdm_path = CefWidevineLoader::GetInstance()->path();
-      if (!cdm_path.empty())
-        command_line->AppendSwitchPath(switches::kWidevineCdmPath, cdm_path);
-    }
-#endif
+  // Necessary to populate DIR_USER_DATA in sub-processes.
+  // See resource_util.cc GetUserDataPath.
+  base::FilePath user_data_dir;
+  if (base::PathService::Get(chrome::DIR_USER_DATA, &user_data_dir)) {
+    command_line->AppendSwitchPath(switches::kUserDataDir, user_data_dir);
+  }
 
+#if BUILDFLAG(IS_LINUX)
+  if (process_type == switches::kZygoteProcess) {
     if (browser_cmd->HasSwitch(switches::kBrowserSubprocessPath)) {
       // Force use of the sub-process executable path for the zygote process.
       const base::FilePath& subprocess_path =
@@ -771,8 +809,16 @@ void AlloyContentBrowserClient::AppendExtraCommandLineSwitches(
       if (!subprocess_path.empty())
         command_line->SetProgram(subprocess_path);
     }
+
+    // Propagate the following switches to the zygote command line (along with
+    // any associated values) if present in the browser command line.
+    static const char* const kSwitchNames[] = {
+        switches::kLogFile,
+    };
+    command_line->CopySwitchesFrom(*browser_cmd, kSwitchNames,
+                                   base::size(kSwitchNames));
   }
-#endif  // defined(OS_LINUX)
+#endif  // BUILDFLAG(IS_LINUX)
 
   CefRefPtr<CefApp> app = CefAppManager::Get()->GetApplication();
   if (app.get()) {
@@ -782,7 +828,7 @@ void AlloyContentBrowserClient::AppendExtraCommandLineSwitches(
       CefRefPtr<CefCommandLineImpl> commandLinePtr(
           new CefCommandLineImpl(command_line, false, false));
       handler->OnBeforeChildProcessLaunch(commandLinePtr.get());
-      commandLinePtr->Detach(nullptr);
+      std::ignore = commandLinePtr->Detach(nullptr);
     }
   }
 }
@@ -957,12 +1003,10 @@ void AlloyContentBrowserClient::OverrideWebkitPrefs(
 
   // Using RVH instead of RFH here because rvh->GetMainFrame() may be nullptr
   // when this method is called.
-  renderer_prefs::PopulateWebPreferences(rvh, *prefs);
+  SkColor base_background_color;
+  renderer_prefs::PopulateWebPreferences(rvh, *prefs, base_background_color);
 
-  if (rvh->GetWidget()->GetView()) {
-    rvh->GetWidget()->GetView()->SetBackgroundColor(
-        prefs->base_background_color);
-  }
+  web_contents->SetPageBaseBackgroundColor(base_background_color);
 }
 
 bool AlloyContentBrowserClient::OverrideWebPreferencesAfterNavigation(
@@ -993,11 +1037,56 @@ AlloyContentBrowserClient::CreateDevToolsManagerDelegate() {
   return std::make_unique<CefDevToolsManagerDelegate>();
 }
 
+void AlloyContentBrowserClient::
+    RegisterAssociatedInterfaceBindersForRenderFrameHost(
+        content::RenderFrameHost& render_frame_host,
+        blink::AssociatedInterfaceRegistry& associated_registry) {
+  associated_registry.AddInterface(base::BindRepeating(
+      [](content::RenderFrameHost* render_frame_host,
+         mojo::PendingAssociatedReceiver<extensions::mojom::LocalFrameHost>
+             receiver) {
+        extensions::ExtensionWebContentsObserver::BindLocalFrameHost(
+            std::move(receiver), render_frame_host);
+      },
+      &render_frame_host));
+
+  associated_registry.AddInterface(base::BindRepeating(
+      [](content::RenderFrameHost* render_frame_host,
+         mojo::PendingAssociatedReceiver<printing::mojom::PrintManagerHost>
+             receiver) {
+        printing::CefPrintViewManager::BindPrintManagerHost(std::move(receiver),
+                                                            render_frame_host);
+      },
+      &render_frame_host));
+
+  associated_registry.AddInterface(base::BindRepeating(
+      [](content::RenderFrameHost* render_frame_host,
+         mojo::PendingAssociatedReceiver<pdf::mojom::PdfService> receiver) {
+        pdf::PDFWebContentsHelper::BindPdfService(std::move(receiver),
+                                                  render_frame_host);
+      },
+      &render_frame_host));
+}
+
 std::vector<std::unique_ptr<content::NavigationThrottle>>
 AlloyContentBrowserClient::CreateThrottlesForNavigation(
     content::NavigationHandle* navigation_handle) {
   throttle::NavigationThrottleList throttles;
+
+  if (extensions::ExtensionsEnabled()) {
+    auto pdf_iframe_throttle =
+        PDFIFrameNavigationThrottle::MaybeCreateThrottleFor(navigation_handle);
+    if (pdf_iframe_throttle)
+      throttles.push_back(std::move(pdf_iframe_throttle));
+
+    auto pdf_throttle = pdf::PdfNavigationThrottle::MaybeCreateThrottleFor(
+        navigation_handle, std::make_unique<ChromePdfStreamDelegate>());
+    if (pdf_throttle)
+      throttles.push_back(std::move(pdf_throttle));
+  }
+
   throttle::CreateThrottlesForNavigation(navigation_handle, throttles);
+
   return throttles;
 }
 
@@ -1026,7 +1115,27 @@ AlloyContentBrowserClient::CreateURLLoaderThrottles(
   return result;
 }
 
-#if defined(OS_LINUX)
+std::vector<std::unique_ptr<content::URLLoaderRequestInterceptor>>
+AlloyContentBrowserClient::WillCreateURLLoaderRequestInterceptors(
+    content::NavigationUIData* navigation_ui_data,
+    int frame_tree_node_id,
+    const scoped_refptr<network::SharedURLLoaderFactory>&
+        network_loader_factory) {
+  std::vector<std::unique_ptr<content::URLLoaderRequestInterceptor>>
+      interceptors;
+
+  if (extensions::ExtensionsEnabled()) {
+    auto pdf_interceptor =
+        pdf::PdfURLLoaderRequestInterceptor::MaybeCreateInterceptor(
+            frame_tree_node_id, std::make_unique<ChromePdfStreamDelegate>());
+    if (pdf_interceptor)
+      interceptors.push_back(std::move(pdf_interceptor));
+  }
+
+  return interceptors;
+}
+
+#if BUILDFLAG(IS_LINUX)
 void AlloyContentBrowserClient::GetAdditionalMappedFilesForChildProcess(
     const base::CommandLine& command_line,
     int child_process_id,
@@ -1036,7 +1145,7 @@ void AlloyContentBrowserClient::GetAdditionalMappedFilesForChildProcess(
     mappings->Share(kCrashDumpSignal, crash_signal_fd);
   }
 }
-#endif  // defined(OS_LINUX)
+#endif  // BUILDFLAG(IS_LINUX)
 
 void AlloyContentBrowserClient::ExposeInterfacesToRenderer(
     service_manager::BinderRegistry* registry,
@@ -1044,19 +1153,27 @@ void AlloyContentBrowserClient::ExposeInterfacesToRenderer(
     content::RenderProcessHost* host) {
   associated_registry->AddInterface(
       base::BindRepeating(&BindPluginInfoHost, host->GetID()));
+
+  if (extensions::ExtensionsEnabled()) {
+    associated_registry->AddInterface(base::BindRepeating(
+        &extensions::EventRouter::BindForRenderer, host->GetID()));
+  }
+
+  CefBrowserManager::ExposeInterfacesToRenderer(registry, associated_registry,
+                                                host);
 }
 
 std::unique_ptr<net::ClientCertStore>
 AlloyContentBrowserClient::CreateClientCertStore(
     content::BrowserContext* browser_context) {
   // Match the logic in ProfileNetworkContextService::CreateClientCertStore.
-#if defined(USE_NSS_CERTS)
+#if BUILDFLAG(USE_NSS_CERTS)
   // TODO: Add support for client implementation of crypto password dialog.
   return std::unique_ptr<net::ClientCertStore>(new net::ClientCertStoreNSS(
       net::ClientCertStoreNSS::PasswordDelegateFactory()));
-#elif defined(OS_WIN)
+#elif BUILDFLAG(IS_WIN)
   return std::unique_ptr<net::ClientCertStore>(new net::ClientCertStoreWin());
-#elif defined(OS_MAC)
+#elif BUILDFLAG(IS_MAC)
   return std::unique_ptr<net::ClientCertStore>(new net::ClientCertStoreMac());
 #else
 #error Unknown platform.
@@ -1097,6 +1214,7 @@ void AlloyContentBrowserClient::RegisterNonNetworkNavigationURLLoaderFactories(
 void AlloyContentBrowserClient::RegisterNonNetworkSubresourceURLLoaderFactories(
     int render_process_id,
     int render_frame_id,
+    const absl::optional<url::Origin>& request_initiator_origin,
     NonNetworkURLLoaderFactoryMap* factories) {
   if (!extensions::ExtensionsEnabled())
     return;
@@ -1151,7 +1269,7 @@ bool AlloyContentBrowserClient::WillCreateURLLoaderFactory(
     int render_process_id,
     URLLoaderFactoryType type,
     const url::Origin& request_initiator,
-    base::Optional<int64_t> navigation_id,
+    absl::optional<int64_t> navigation_id,
     ukm::SourceIdObj ukm_source_id,
     mojo::PendingReceiver<network::mojom::URLLoaderFactory>* factory_receiver,
     mojo::PendingRemote<network::mojom::TrustedURLLoaderHeaderClient>*
@@ -1182,7 +1300,7 @@ void AlloyContentBrowserClient::OnNetworkServiceCreated(
       network_service);
 }
 
-void AlloyContentBrowserClient::ConfigureNetworkContextParams(
+bool AlloyContentBrowserClient::ConfigureNetworkContextParams(
     content::BrowserContext* context,
     bool in_memory,
     const base::FilePath& relative_partition_path,
@@ -1192,10 +1310,9 @@ void AlloyContentBrowserClient::ConfigureNetworkContextParams(
   // This method may be called during shutdown when using multi-threaded
   // message loop mode. In that case exit early to avoid crashes.
   if (!SystemNetworkContextManager::GetInstance()) {
-    // This must match the value expected in
+    // Cancel NetworkContext creation in
     // StoragePartitionImpl::InitNetworkContext.
-    network_context_params->context_name = "magic_shutting_down";
-    return;
+    return false;
   }
 
   auto cef_context = CefBrowserContext::FromBrowserContext(context);
@@ -1219,6 +1336,8 @@ void AlloyContentBrowserClient::ConfigureNetworkContextParams(
   // TODO(cef): Remove this and add required NetworkIsolationKeys,
   // this is currently not the case and this was not required pre M84.
   network_context_params->require_network_isolation_key = false;
+
+  return true;
 }
 
 // The sandbox may block read/write access from the NetworkService to
@@ -1242,14 +1361,16 @@ AlloyContentBrowserClient::GetNetworkContextsParentDirectory() {
 
 bool AlloyContentBrowserClient::HandleExternalProtocol(
     const GURL& url,
-    content::WebContents::OnceGetter web_contents_getter,
+    content::WebContents::Getter web_contents_getter,
     int child_id,
     int frame_tree_node_id,
     content::NavigationUIData* navigation_data,
     bool is_main_frame,
+    network::mojom::WebSandboxFlags sandbox_flags,
     ui::PageTransition page_transition,
     bool has_user_gesture,
-    const base::Optional<url::Origin>& initiating_origin,
+    const absl::optional<url::Origin>& initiating_origin,
+    content::RenderFrameHost* initiator_document,
     mojo::PendingRemote<network::mojom::URLLoaderFactory>* out_factory) {
   // Call the other HandleExternalProtocol variant.
   return false;
@@ -1259,7 +1380,10 @@ bool AlloyContentBrowserClient::HandleExternalProtocol(
     content::WebContents::Getter web_contents_getter,
     int frame_tree_node_id,
     content::NavigationUIData* navigation_data,
+    network::mojom::WebSandboxFlags sandbox_flags,
     const network::ResourceRequest& resource_request,
+    const absl::optional<url::Origin>& initiating_origin,
+    content::RenderFrameHost* initiator_document,
     mojo::PendingRemote<network::mojom::URLLoaderFactory>* out_factory) {
   mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver =
       out_factory->InitWithNewPipeAndPassReceiver();
@@ -1268,8 +1392,8 @@ bool AlloyContentBrowserClient::HandleExternalProtocol(
   // nothing handles the request.
   auto request_handler = net_service::CreateInterceptedRequestHandler(
       web_contents_getter, frame_tree_node_id, resource_request,
-      base::Bind(CefBrowserPlatformDelegate::HandleExternalProtocol,
-                 resource_request.url));
+      base::BindRepeating(CefBrowserPlatformDelegate::HandleExternalProtocol,
+                          resource_request.url));
 
   net_service::ProxyURLLoaderFactory::CreateProxy(
       web_contents_getter, std::move(receiver), std::move(request_handler));
@@ -1291,7 +1415,8 @@ AlloyContentBrowserClient::CreateWindowForPictureInPicture(
 void AlloyContentBrowserClient::RegisterBrowserInterfaceBindersForFrame(
     content::RenderFrameHost* render_frame_host,
     mojo::BinderMapWithContext<content::RenderFrameHost*>* map) {
-  PopulateChromeFrameBinders(map);
+  CefBrowserFrame::RegisterBrowserInterfaceBindersForFrame(render_frame_host,
+                                                           map);
 
   if (!extensions::ExtensionsEnabled())
     return;
@@ -1334,6 +1459,10 @@ std::string AlloyContentBrowserClient::GetUserAgent() {
   return embedder_support::GetUserAgent();
 }
 
+std::string AlloyContentBrowserClient::GetReducedUserAgent() {
+  return embedder_support::GetReducedUserAgent();
+}
+
 blink::UserAgentMetadata AlloyContentBrowserClient::GetUserAgentMetadata() {
   blink::UserAgentMetadata metadata;
 
@@ -1356,43 +1485,50 @@ AlloyContentBrowserClient::GetPluginMimeTypesWithExternalHandlers(
   auto map = PluginUtils::GetMimeTypeToExtensionIdMap(browser_context);
   for (const auto& pair : map)
     mime_types.insert(pair.first);
+  if (pdf::IsInternalPluginExternallyHandled())
+    mime_types.insert(pdf::kInternalPluginMimeType);
   return mime_types;
 }
 
 bool AlloyContentBrowserClient::ArePersistentMediaDeviceIDsAllowed(
     content::BrowserContext* browser_context,
     const GURL& url,
-    const GURL& site_for_cookies,
-    const base::Optional<url::Origin>& top_frame_origin) {
+    const net::SiteForCookies& site_for_cookies,
+    const absl::optional<url::Origin>& top_frame_origin) {
   // Persistent MediaDevice IDs are allowed if cookies are allowed.
   return CookieSettingsFactory::GetForProfile(
              Profile::FromBrowserContext(browser_context))
-      ->IsCookieAccessAllowed(url, site_for_cookies, top_frame_origin);
+      ->IsFullCookieAccessAllowed(url, site_for_cookies, top_frame_origin);
 }
 
 bool AlloyContentBrowserClient::ShouldAllowPluginCreation(
     const url::Origin& embedder_origin,
     const content::PepperPluginInfo& plugin_info) {
   if (plugin_info.name == ChromeContentClient::kPDFInternalPluginName) {
-    // Allow embedding the internal PDF plugin in the built-in PDF extension.
-    if (embedder_origin.scheme() == extensions::kExtensionScheme &&
-        embedder_origin.host() == extension_misc::kPdfExtensionId) {
-      return true;
-    }
-
-    // Allow embedding the internal PDF plugin in chrome://print.
-    if (embedder_origin ==
-        url::Origin::Create(GURL(chrome::kChromeUIPrintURL))) {
-      return true;
-    }
-
-    // Only allow the PDF plugin in the known, trustworthy origins that are
-    // allowlisted above.  See also https://crbug.com/520422 and
-    // https://crbug.com/1027173.
-    return false;
+    return IsPdfInternalPluginAllowedOrigin(embedder_origin);
   }
 
   return true;
+}
+
+void AlloyContentBrowserClient::OnWebContentsCreated(
+    content::WebContents* web_contents) {
+  // Attach universal WebContentsObservers. These are quite rare, and in most
+  // cases CefBrowserPlatformDelegateAlloy::BrowserCreated and/or
+  // CefExtensionsAPIClient::AttachWebContentsHelpers should be used instead.
+
+  if (extensions::ExtensionsEnabled()) {
+    extensions::CefExtensionWebContentsObserver::CreateForWebContents(
+        web_contents);
+  }
+}
+
+bool AlloyContentBrowserClient::IsFindInPageDisabledForOrigin(
+    const url::Origin& origin) {
+  // For PDF viewing with the PPAPI-free PDF Viewer, find-in-page should only
+  // display results from the PDF content, and not from the UI.
+  return base::FeatureList::IsEnabled(chrome_pdf::features::kPdfUnseasoned) &&
+         IsPdfExtensionOrigin(origin);
 }
 
 CefRefPtr<CefRequestContextImpl> AlloyContentBrowserClient::request_context()

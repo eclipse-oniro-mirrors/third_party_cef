@@ -29,8 +29,8 @@ void CefBrowserPlatformDelegateBackground::CloseHostWindow() {
   // No host window, so continue browser destruction now. Do it asynchronously
   // so the call stack has a chance to unwind.
   CEF_POST_TASK(CEF_UIT,
-                base::Bind(&AlloyBrowserHostImpl::WindowDestroyed,
-                           static_cast<AlloyBrowserHostImpl*>(browser_)));
+                base::BindOnce(&AlloyBrowserHostImpl::WindowDestroyed,
+                               static_cast<AlloyBrowserHostImpl*>(browser_)));
 }
 
 CefWindowHandle CefBrowserPlatformDelegateBackground::GetHostWindowHandle()
@@ -77,7 +77,7 @@ void CefBrowserPlatformDelegateBackground::SendTouchEvent(
   // Nothing to do here.
 }
 
-void CefBrowserPlatformDelegateBackground::SendFocusEvent(bool setFocus) {
+void CefBrowserPlatformDelegateBackground::SetFocus(bool setFocus) {
   // Nothing to do here.
 }
 

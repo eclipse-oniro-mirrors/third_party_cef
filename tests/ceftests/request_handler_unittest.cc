@@ -4,12 +4,12 @@
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
 
-#include "include/base/cef_bind.h"
-#include "include/base/cef_scoped_ptr.h"
+#include "include/base/cef_callback.h"
 #include "include/cef_cookie.h"
 #include "include/cef_request_context_handler.h"
 #include "include/wrapper/cef_closure_task.h"
@@ -97,7 +97,7 @@ class NetNotifyTestHandler : public TestHandler {
       CefRefPtr<CefBrowser> browser,
       CefRefPtr<CefFrame> frame,
       CefRefPtr<CefRequest> request,
-      CefRefPtr<CefRequestCallback> callback) override {
+      CefRefPtr<CefCallback> callback) override {
     EXPECT_TRUE(CefCurrentlyOn(TID_IO));
 
     const std::string& url = request->GetURL();
@@ -284,8 +284,8 @@ class NetNotifyTestHandler : public TestHandler {
       explicit TestVisitor(NetNotifyTestHandler* handler) : handler_(handler) {}
       ~TestVisitor() override {
         // Destroy the test.
-        CefPostTask(TID_UI,
-                    base::Bind(&NetNotifyTestHandler::DestroyTest, handler_));
+        CefPostTask(TID_UI, base::BindOnce(&NetNotifyTestHandler::DestroyTest,
+                                           handler_));
       }
 
       bool Visit(const CefCookie& cookie,
@@ -401,7 +401,7 @@ class NetNotifyRendererTest : public ClientAppRenderer::Delegate,
   void OnBrowserCreated(CefRefPtr<ClientAppRenderer> app,
                         CefRefPtr<CefBrowser> browser,
                         CefRefPtr<CefDictionaryValue> extra_info) override {
-    run_test_ = extra_info->HasKey(kNetNotifyTestCmdKey);
+    run_test_ = extra_info && extra_info->HasKey(kNetNotifyTestCmdKey);
   }
 
   CefRefPtr<CefLoadHandler> GetLoadHandler(
@@ -467,7 +467,7 @@ void RunNetNotifyTest(NetNotifyTestType test_type,
   for (size_t i = 0U; i < count; ++i) {
     CefRefPtr<NetNotifyTestHandler> handler =
         new NetNotifyTestHandler(&completion_state, test_type, same_origin);
-    collection.AddTestHandler(handler);
+    collection.AddTestHandler(handler.get());
     handlers.push_back(handler);
   }
 

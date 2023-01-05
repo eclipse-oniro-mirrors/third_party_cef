@@ -18,20 +18,31 @@
 #include "chrome/browser/extensions/event_router_forwarder.h"
 #include "media/media_buildflags.h"
 
+namespace extensions {
+class ExtensionsBrowserClient;
+class ExtensionsClient;
+}  // namespace extensions
+
 class ChromeProfileManagerAlloy;
 
 class BackgroundModeManager {
  public:
   BackgroundModeManager();
-  virtual ~BackgroundModeManager();
 
- private:
-  DISALLOW_COPY_AND_ASSIGN(BackgroundModeManager);
+  BackgroundModeManager(const BackgroundModeManager&) = delete;
+  BackgroundModeManager& operator=(const BackgroundModeManager&) = delete;
+
+  virtual ~BackgroundModeManager();
 };
 
 class ChromeBrowserProcessAlloy : public BrowserProcess {
  public:
   ChromeBrowserProcessAlloy();
+
+  ChromeBrowserProcessAlloy(const ChromeBrowserProcessAlloy&) = delete;
+  ChromeBrowserProcessAlloy& operator=(const ChromeBrowserProcessAlloy&) =
+      delete;
+
   ~ChromeBrowserProcessAlloy() override;
 
   void Initialize();
@@ -46,7 +57,6 @@ class ChromeBrowserProcessAlloy : public BrowserProcess {
   metrics::MetricsService* metrics_service() override;
   SystemNetworkContextManager* system_network_context_manager() override;
   network::NetworkQualityTracker* network_quality_tracker() override;
-  WatchDogThread* watchdog_thread() override;
   ProfileManager* profile_manager() override;
   PrefService* local_state() override;
   scoped_refptr<network::SharedURLLoaderFactory> shared_url_loader_factory()
@@ -85,7 +95,7 @@ class ChromeBrowserProcessAlloy : public BrowserProcess {
   floc_sorting_lsh_clusters_service() override;
   StartupData* startup_data() override;
 
-#if defined(OS_WIN) || defined(OS_LINUX)
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)
   void StartAutoupdateTimer() override;
 #endif
 
@@ -98,11 +108,18 @@ class ChromeBrowserProcessAlloy : public BrowserProcess {
   resource_coordinator::ResourceCoordinatorParts* resource_coordinator_parts()
       override;
   BuildState* GetBuildState() override;
+  SerialPolicyAllowedPorts* serial_policy_allowed_ports() override;
+  breadcrumbs::BreadcrumbPersistentStorageManager*
+  GetBreadcrumbPersistentStorageManager() override;
 
  private:
   bool initialized_;
   bool context_initialized_;
   bool shutdown_;
+
+  std::unique_ptr<extensions::ExtensionsClient> extensions_client_;
+  std::unique_ptr<extensions::ExtensionsBrowserClient>
+      extensions_browser_client_;
 
   std::string locale_;
   std::unique_ptr<printing::PrintJobManager> print_job_manager_;
@@ -118,7 +135,7 @@ class ChromeBrowserProcessAlloy : public BrowserProcess {
       browser_policy_connector_;
   std::unique_ptr<base::FieldTrialList> field_trial_list_;
 
-  DISALLOW_COPY_AND_ASSIGN(ChromeBrowserProcessAlloy);
+  std::unique_ptr<component_updater::ComponentUpdateService> component_updater_;
 };
 
 #endif  // CEF_LIBCEF_BROWSER_ALLOY_CHROME_BROWSER_PROCESS_ALLOY_H_

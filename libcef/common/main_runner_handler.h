@@ -13,9 +13,9 @@ struct MainFunctionParams;
 // Handles running of the main process.
 class CefMainRunnerHandler {
  public:
-  virtual void PreCreateMainMessageLoop() = 0;
+  virtual void PreBrowserMain() = 0;
   virtual int RunMainProcess(
-      const content::MainFunctionParams& main_function_params) = 0;
+      content::MainFunctionParams main_function_params) = 0;
 
  protected:
   virtual ~CefMainRunnerHandler() {}

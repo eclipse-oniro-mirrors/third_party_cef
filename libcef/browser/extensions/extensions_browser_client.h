@@ -18,6 +18,11 @@ class ExtensionsAPIClient;
 class CefExtensionsBrowserClient : public ExtensionsBrowserClient {
  public:
   CefExtensionsBrowserClient();
+
+  CefExtensionsBrowserClient(const CefExtensionsBrowserClient&) = delete;
+  CefExtensionsBrowserClient& operator=(const CefExtensionsBrowserClient&) =
+      delete;
+
   ~CefExtensionsBrowserClient() override;
 
   // Returns the singleton CefExtensionsBrowserClient instance.
@@ -51,9 +56,8 @@ class CefExtensionsBrowserClient : public ExtensionsBrowserClient {
       mojo::PendingReceiver<network::mojom::URLLoader> loader,
       const base::FilePath& resource_relative_path,
       const int resource_id,
-      const std::string& content_security_policy,
-      mojo::PendingRemote<network::mojom::URLLoaderClient> client,
-      bool send_cors_header) override;
+      scoped_refptr<net::HttpResponseHeaders> headers,
+      mojo::PendingRemote<network::mojom::URLLoaderClient> client) override;
   bool AllowCrossRendererResourceLoad(
       const network::ResourceRequest& request,
       network::mojom::RequestDestination destination,
@@ -112,8 +116,6 @@ class CefExtensionsBrowserClient : public ExtensionsBrowserClient {
   std::unique_ptr<ComponentExtensionResourceManager> resource_manager_;
 
   std::unique_ptr<KioskDelegate> kiosk_delegate_;
-
-  DISALLOW_COPY_AND_ASSIGN(CefExtensionsBrowserClient);
 };
 
 }  // namespace extensions

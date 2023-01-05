@@ -23,6 +23,9 @@ class AuthCallbackImpl : public CefAuthCallback {
       : delegate_(delegate),
         task_runner_(base::SequencedTaskRunnerHandle::Get()) {}
 
+  AuthCallbackImpl(const AuthCallbackImpl&) = delete;
+  AuthCallbackImpl& operator=(const AuthCallbackImpl&) = delete;
+
   ~AuthCallbackImpl() override {
     if (delegate_.MaybeValid()) {
       // If |delegate_| isn't valid this will be a no-op.
@@ -63,12 +66,11 @@ class AuthCallbackImpl : public CefAuthCallback {
   scoped_refptr<base::SequencedTaskRunner> task_runner_;
 
   IMPLEMENT_REFCOUNTING(AuthCallbackImpl);
-  DISALLOW_COPY_AND_ASSIGN(AuthCallbackImpl);
 };
 
 void RunCallbackOnIOThread(
     CefRefPtr<CefBrowserHostBase> browser,
-    base::Optional<CefBrowserURLRequest::RequestInfo> url_request_info,
+    absl::optional<CefBrowserURLRequest::RequestInfo> url_request_info,
     const net::AuthChallengeInfo& auth_info,
     const GURL& origin_url,
     CefRefPtr<AuthCallbackImpl> callback_impl) {
@@ -142,7 +144,7 @@ void LoginDelegate::Continue(const CefString& username,
 void LoginDelegate::Cancel() {
   CEF_REQUIRE_UIT();
   if (!callback_.is_null()) {
-    std::move(callback_).Run(base::nullopt);
+    std::move(callback_).Run(absl::nullopt);
   }
 }
 

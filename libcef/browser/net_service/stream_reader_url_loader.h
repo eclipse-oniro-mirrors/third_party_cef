@@ -10,9 +10,11 @@
 
 #include "base/callback.h"
 #include "base/threading/thread_checker.h"
+#include "mojo/public/cpp/bindings/remote.h"
 #include "mojo/public/cpp/system/simple_watcher.h"
 #include "net/http/http_byte_range.h"
 #include "services/network/public/cpp/net_adapters.h"
+#include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/mojom/network_context.mojom.h"
 #include "services/network/public/mojom/url_loader.mojom.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
@@ -116,6 +118,10 @@ class StreamReaderURLLoader : public network::mojom::URLLoader {
       mojo::PendingRemote<network::mojom::TrustedHeaderClient> header_client,
       const net::MutableNetworkTrafficAnnotationTag& traffic_annotation,
       std::unique_ptr<Delegate> response_delegate);
+
+  StreamReaderURLLoader(const StreamReaderURLLoader&) = delete;
+  StreamReaderURLLoader& operator=(const StreamReaderURLLoader&) = delete;
+
   ~StreamReaderURLLoader() override;
 
   void Start();
@@ -127,7 +133,7 @@ class StreamReaderURLLoader : public network::mojom::URLLoader {
       const std::vector<std::string>& removed_headers,
       const net::HttpRequestHeaders& modified_headers,
       const net::HttpRequestHeaders& modified_cors_exempt_headers,
-      const base::Optional<GURL>& new_url) override;
+      const absl::optional<GURL>& new_url) override;
   void SetPriority(net::RequestPriority priority,
                    int intra_priority_value) override;
   void PauseReadingBodyFromNet() override;
@@ -136,7 +142,7 @@ class StreamReaderURLLoader : public network::mojom::URLLoader {
  private:
   void ContinueWithRequestHeaders(
       int32_t result,
-      const base::Optional<net::HttpRequestHeaders>& headers);
+      const absl::optional<net::HttpRequestHeaders>& headers);
   void OnInputStreamOpened(std::unique_ptr<Delegate> returned_delegate,
                            std::unique_ptr<InputStream> input_stream);
 
@@ -145,8 +151,8 @@ class StreamReaderURLLoader : public network::mojom::URLLoader {
   void ContinueWithResponseHeaders(
       network::mojom::URLResponseHeadPtr pending_response,
       int32_t result,
-      const base::Optional<std::string>& headers,
-      const base::Optional<GURL>& redirect_url);
+      const absl::optional<std::string>& headers,
+      const absl::optional<GURL>& redirect_url);
 
   void SendBody();
   void ReadMore();
@@ -182,8 +188,6 @@ class StreamReaderURLLoader : public network::mojom::URLLoader {
   base::OnceClosure open_cancel_callback_;
 
   base::WeakPtrFactory<StreamReaderURLLoader> weak_factory_;
-
-  DISALLOW_COPY_AND_ASSIGN(StreamReaderURLLoader);
 };
 
 }  // namespace net_service

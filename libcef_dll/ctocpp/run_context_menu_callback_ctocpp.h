@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=15e8c2e8426ce3f7ea6662aa7dc1a51bf541a3d2$
+// $hash=9b70c0c42b514b6d44f4fff612eaf4d3fb62ef06$
 //
 
 #ifndef CEF_LIBCEF_DLL_CTOCPP_RUN_CONTEXT_MENU_CALLBACK_CTOCPP_H_
@@ -35,8 +35,8 @@ class CefRunContextMenuCallbackCToCpp
   virtual ~CefRunContextMenuCallbackCToCpp();
 
   // CefRunContextMenuCallback methods.
-  void Continue(int command_id, EventFlags event_flags) OVERRIDE;
-  void Cancel() OVERRIDE;
+  void Continue(int command_id, EventFlags event_flags) override;
+  void Cancel() override;
 };
 
 #endif  // CEF_LIBCEF_DLL_CTOCPP_RUN_CONTEXT_MENU_CALLBACK_CTOCPP_H_

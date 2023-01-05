@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=4e5e470d6aa929b3b2d4286eb4bcdc90dba052dc$
+// $hash=e61d67d8295c9fcc3e801bf61f4381434924940c$
 //
 
 #ifndef CEF_LIBCEF_DLL_CTOCPP_VIEWS_WINDOW_DELEGATE_CTOCPP_H_
@@ -43,6 +43,7 @@ class CefWindowDelegateCToCpp
                                        bool* is_menu,
                                        bool* can_activate_menu) override;
   CefRect GetInitialBounds(CefRefPtr<CefWindow> window) override;
+  cef_show_state_t GetInitialShowState(CefRefPtr<CefWindow> window) override;
   bool IsFrameless(CefRefPtr<CefWindow> window) override;
   bool CanResize(CefRefPtr<CefWindow> window) override;
   bool CanMaximize(CefRefPtr<CefWindow> window) override;
@@ -66,6 +67,8 @@ class CefWindowDelegateCToCpp
                           bool added,
                           CefRefPtr<CefView> child) override;
   void OnWindowChanged(CefRefPtr<CefView> view, bool added) override;
+  void OnLayoutChanged(CefRefPtr<CefView> view,
+                       const CefRect& new_bounds) override;
   void OnFocus(CefRefPtr<CefView> view) override;
   void OnBlur(CefRefPtr<CefView> view) override;
 };

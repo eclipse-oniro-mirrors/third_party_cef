@@ -72,13 +72,9 @@ class AlloyBrowserHostImpl : public CefBrowserHostBase,
   // Returns the browser associated with the specified WebContents.
   static CefRefPtr<AlloyBrowserHostImpl> GetBrowserForContents(
       const content::WebContents* contents);
-  // Returns the browser associated with the specified FrameTreeNode ID.
-  static CefRefPtr<AlloyBrowserHostImpl> GetBrowserForFrameTreeNode(
-      int frame_tree_node_id);
-  // Returns the browser associated with the specified frame routing IDs.
-  static CefRefPtr<AlloyBrowserHostImpl> GetBrowserForFrameRoute(
-      int render_process_id,
-      int render_routing_id);
+  // Returns the browser associated with the specified global ID.
+  static CefRefPtr<AlloyBrowserHostImpl> GetBrowserForGlobalId(
+      const content::GlobalRenderFrameHostId& global_id);
 
   // CefBrowserHost methods.
   void CloseBrowser(bool force_close) override;
@@ -98,8 +94,7 @@ class AlloyBrowserHostImpl : public CefBrowserHostBase,
   void PrintToPDF(const CefString& path,
                   const CefPdfPrintSettings& settings,
                   CefRefPtr<CefPdfPrintCallback> callback) override;
-  void Find(int identifier,
-            const CefString& searchText,
+  void Find(const CefString& searchText,
             bool forward,
             bool matchCase,
             bool findNext) override;
@@ -117,7 +112,6 @@ class AlloyBrowserHostImpl : public CefBrowserHostBase,
   void Invalidate(PaintElementType type) override;
   void SendExternalBeginFrame() override;
   void SendTouchEvent(const CefTouchEvent& event) override;
-  void SendFocusEvent(bool setFocus) override;
   void SendCaptureLostEvent() override;
   void NotifyMoveOrResizeStarted() override;
   int GetWindowlessFrameRate() override;
@@ -207,7 +201,8 @@ class AlloyBrowserHostImpl : public CefBrowserHostBase,
   content::WebContents* OpenURLFromTab(
       content::WebContents* source,
       const content::OpenURLParams& params) override;
-  bool ShouldTransferNavigation(bool is_main_frame_navigation) override;
+  bool ShouldAllowRendererInitiatedCrossProcessNavigation(
+      bool is_main_frame_navigation) override;
   void AddNewContents(content::WebContents* source,
                       std::unique_ptr<content::WebContents> new_contents,
                       const GURL& target_url,
@@ -216,7 +211,7 @@ class AlloyBrowserHostImpl : public CefBrowserHostBase,
                       bool user_gesture,
                       bool* was_blocked) override;
   void LoadingStateChanged(content::WebContents* source,
-                           bool to_different_document) override;
+                           bool should_show_loading_ui) override;
   void CloseContents(content::WebContents* source) override;
   void UpdateTargetURL(content::WebContents* source, const GURL& url) override;
   bool DidAddMessageToConsole(content::WebContents* source,
@@ -228,7 +223,7 @@ class AlloyBrowserHostImpl : public CefBrowserHostBase,
                          bool proceed,
                          bool* proceed_to_fire_unload) override;
   bool TakeFocus(content::WebContents* source, bool reverse) override;
-  bool HandleContextMenu(content::RenderFrameHost* render_frame_host,
+  bool HandleContextMenu(content::RenderFrameHost& render_frame_host,
                          const content::ContextMenuParams& params) override;
   content::KeyboardEventProcessingResult PreHandleKeyboardEvent(
       content::WebContents* source,
@@ -254,7 +249,7 @@ class AlloyBrowserHostImpl : public CefBrowserHostBase,
                           const std::string& frame_name,
                           const GURL& target_url,
                           content::WebContents* new_contents) override;
-  void DidNavigateMainFramePostCommit(
+  void DidNavigatePrimaryMainFramePostCommit(
       content::WebContents* web_contents) override;
   content::JavaScriptDialogManager* GetJavaScriptDialogManager(
       content::WebContents* source) override;
@@ -292,6 +287,8 @@ class AlloyBrowserHostImpl : public CefBrowserHostBase,
       const viz::SurfaceId& surface_id,
       const gfx::Size& natural_size) override;
   void ExitPictureInPicture() override;
+  bool IsBackForwardCacheSupported() override;
+  bool IsPrerender2Supported() override;
 
   // content::WebContentsObserver methods.
   using content::WebContentsObserver::BeforeUnloadFired;
@@ -372,7 +369,7 @@ class AlloyBrowserHostImpl : public CefBrowserHostBase,
   // Timer for determining when "recently audible" transitions to false. This
   // starts running when a tab stops being audible, and is canceled if it starts
   // being audible again before it fires.
-  base::OneShotTimer recently_audible_timer_;
+  std::unique_ptr<base::OneShotTimer> recently_audible_timer_;
 };
 
 #endif  // CEF_LIBCEF_BROWSER_ALLOY_ALLOY_BROWSER_HOST_IMPL_H_

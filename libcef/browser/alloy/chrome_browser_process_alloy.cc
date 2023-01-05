@@ -8,17 +8,23 @@
 #include "libcef/browser/alloy/chrome_profile_manager_alloy.h"
 #include "libcef/browser/browser_context.h"
 #include "libcef/browser/context.h"
+#include "libcef/browser/extensions/extensions_browser_client.h"
 #include "libcef/browser/prefs/browser_prefs.h"
 #include "libcef/browser/thread_util.h"
 #include "libcef/common/cef_switches.h"
+#include "libcef/common/extensions/extensions_client.h"
+#include "libcef/common/extensions/extensions_util.h"
 
 #include "base/command_line.h"
+#include "chrome/browser/component_updater/chrome_component_updater_configurator.h"
 #include "chrome/browser/net/system_network_context_manager.h"
 #include "chrome/browser/policy/chrome_browser_policy_connector.h"
 #include "chrome/browser/printing/background_printing_manager.h"
 #include "chrome/browser/printing/print_job_manager.h"
 #include "chrome/browser/printing/print_preview_dialog_controller.h"
 #include "chrome/browser/ui/prefs/pref_watcher.h"
+#include "components/component_updater/component_updater_service.h"
+#include "components/component_updater/timer_update_scheduler.h"
 #include "components/net_log/chrome_net_log.h"
 #include "components/prefs/pref_service.h"
 #include "content/browser/startup_helper.h"
@@ -35,6 +41,11 @@ ChromeBrowserProcessAlloy::ChromeBrowserProcessAlloy()
 
 ChromeBrowserProcessAlloy::~ChromeBrowserProcessAlloy() {
   DCHECK((!initialized_ && !context_initialized_) || shutdown_);
+
+  if (extensions::ExtensionsEnabled()) {
+    extensions::ExtensionsBrowserClient::Set(nullptr);
+    extensions_browser_client_.reset();
+  }
 }
 
 void ChromeBrowserProcessAlloy::Initialize() {
@@ -45,6 +56,16 @@ void ChromeBrowserProcessAlloy::Initialize() {
 
   // Initialize this early before any code tries to check feature flags.
   field_trial_list_ = content::SetUpFieldTrialsAndFeatureList();
+
+  if (extensions::ExtensionsEnabled()) {
+    // Initialize extension global objects before creating the global
+    // BrowserContext.
+    extensions_client_.reset(new extensions::CefExtensionsClient());
+    extensions::ExtensionsClient::Set(extensions_client_.get());
+    extensions_browser_client_.reset(
+        new extensions::CefExtensionsBrowserClient);
+    extensions::ExtensionsBrowserClient::Set(extensions_browser_client_.get());
+  }
 
   initialized_ = true;
 }
@@ -100,10 +121,9 @@ void ChromeBrowserProcessAlloy::CleanupOnUIThread() {
 
   local_state_.reset();
   browser_policy_connector_.reset();
-
   background_printing_manager_.reset();
-
   field_trial_list_.reset();
+  component_updater_.reset();
 
   shutdown_ = true;
 }
@@ -136,11 +156,6 @@ ChromeBrowserProcessAlloy::system_network_context_manager() {
 
 network::NetworkQualityTracker*
 ChromeBrowserProcessAlloy::network_quality_tracker() {
-  NOTREACHED();
-  return nullptr;
-}
-
-WatchDogThread* ChromeBrowserProcessAlloy::watchdog_thread() {
   NOTREACHED();
   return nullptr;
 }
@@ -325,14 +340,29 @@ StartupData* ChromeBrowserProcessAlloy::startup_data() {
   return nullptr;
 }
 
-#if defined(OS_WIN) || defined(OS_LINUX)
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)
 void ChromeBrowserProcessAlloy::StartAutoupdateTimer() {}
 #endif
 
 component_updater::ComponentUpdateService*
 ChromeBrowserProcessAlloy::component_updater() {
-  NOTREACHED();
-  return nullptr;
+  if (component_updater_)
+    return component_updater_.get();
+
+  if (!content::BrowserThread::CurrentlyOn(content::BrowserThread::UI)) {
+    return nullptr;
+  }
+
+  std::unique_ptr<component_updater::UpdateScheduler> scheduler =
+      std::make_unique<component_updater::TimerUpdateScheduler>();
+
+  component_updater_ = component_updater::ComponentUpdateServiceFactory(
+      component_updater::MakeChromeComponentUpdaterConfigurator(
+          base::CommandLine::ForCurrentProcess(),
+          g_browser_process->local_state()),
+      std::move(scheduler), /*brand=*/std::string());
+
+  return component_updater_.get();
 }
 
 MediaFileSystemRegistry*
@@ -369,6 +399,18 @@ ChromeBrowserProcessAlloy::resource_coordinator_parts() {
 }
 
 BuildState* ChromeBrowserProcessAlloy::GetBuildState() {
+  NOTREACHED();
+  return nullptr;
+}
+
+SerialPolicyAllowedPorts*
+ChromeBrowserProcessAlloy::serial_policy_allowed_ports() {
+  NOTREACHED();
+  return nullptr;
+}
+
+breadcrumbs::BreadcrumbPersistentStorageManager*
+ChromeBrowserProcessAlloy::GetBreadcrumbPersistentStorageManager() {
   NOTREACHED();
   return nullptr;
 }

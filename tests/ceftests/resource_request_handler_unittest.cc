@@ -4,11 +4,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <sstream>
 #include <string>
 
-#include "include/base/cef_bind.h"
-#include "include/base/cef_scoped_ptr.h"
+#include "include/base/cef_callback.h"
 #include "include/cef_request_context_handler.h"
 #include "include/cef_scheme.h"
 #include "include/wrapper/cef_closure_task.h"
@@ -30,17 +30,17 @@ class NormalResourceHandler : public CefStreamResourceHandler {
                         const CefString& mime_type,
                         CefResponse::HeaderMap header_map,
                         CefRefPtr<CefStreamReader> stream,
-                        const base::Closure& destroy_callback)
+                        base::OnceClosure destroy_callback)
       : CefStreamResourceHandler(status_code,
                                  status_text,
                                  mime_type,
                                  header_map,
                                  stream),
-        destroy_callback_(destroy_callback) {}
+        destroy_callback_(std::move(destroy_callback)) {}
 
   ~NormalResourceHandler() override {
     EXPECT_EQ(1, cancel_ct_);
-    destroy_callback_.Run();
+    std::move(destroy_callback_).Run();
   }
 
   void Cancel() override {
@@ -49,7 +49,7 @@ class NormalResourceHandler : public CefStreamResourceHandler {
   }
 
  private:
-  const base::Closure destroy_callback_;
+  base::OnceClosure destroy_callback_;
   int cancel_ct_ = 0;
 };
 
@@ -88,21 +88,21 @@ class CallbackResourceHandler : public CefResourceHandler {
                           const CefString& mime_type,
                           CefResponse::HeaderMap header_map,
                           CefRefPtr<CefStreamReader> stream,
-                          const base::Closure& destroy_callback)
+                          base::OnceClosure destroy_callback)
       : mode_(mode),
         status_code_(status_code),
         status_text_(status_text),
         mime_type_(mime_type),
         header_map_(header_map),
         stream_(stream),
-        destroy_callback_(destroy_callback) {
+        destroy_callback_(std::move(destroy_callback)) {
     DCHECK(!mime_type_.empty());
     DCHECK(stream_.get());
   }
 
   ~CallbackResourceHandler() override {
     EXPECT_EQ(1, cancel_ct_);
-    destroy_callback_.Run();
+    std::move(destroy_callback_).Run();
   }
 
   bool Open(CefRefPtr<CefRequest> request,
@@ -113,7 +113,7 @@ class CallbackResourceHandler : public CefResourceHandler {
     if (IsDelayedOpen()) {
       // Continue the request asynchronously by executing the callback.
       CefPostTask(TID_FILE_USER_VISIBLE,
-                  base::Bind(&CefCallback::Continue, callback));
+                  base::BindOnce(&CefCallback::Continue, callback));
       handle_request = false;
       return true;
     } else if (IsImmediateOpen()) {
@@ -153,8 +153,8 @@ class CallbackResourceHandler : public CefResourceHandler {
     if (IsDelayedRead()) {
       // Continue the request asynchronously by executing the callback.
       CefPostTask(TID_FILE_USER_VISIBLE,
-                  base::Bind(&CallbackResourceHandler::ContinueRead, this,
-                             data_out, bytes_to_read, callback));
+                  base::BindOnce(&CallbackResourceHandler::ContinueRead, this,
+                                 data_out, bytes_to_read, callback));
       return true;
     } else if (IsImmediateRead()) {
       // Continue the request immediately be executing the callback.
@@ -207,7 +207,7 @@ class CallbackResourceHandler : public CefResourceHandler {
   const CefResponse::HeaderMap header_map_;
   const CefRefPtr<CefStreamReader> stream_;
 
-  const base::Closure destroy_callback_;
+  base::OnceClosure destroy_callback_;
   int cancel_ct_ = 0;
 
   IMPLEMENT_REFCOUNTING(CallbackResourceHandler);
@@ -225,10 +225,10 @@ class IncompleteResourceHandlerOld : public CefResourceHandler {
 
   IncompleteResourceHandlerOld(TestMode test_mode,
                                const std::string& mime_type,
-                               const base::Closure& destroy_callback)
+                               base::OnceClosure destroy_callback)
       : test_mode_(test_mode),
         mime_type_(mime_type),
-        destroy_callback_(destroy_callback) {}
+        destroy_callback_(std::move(destroy_callback)) {}
 
   ~IncompleteResourceHandlerOld() override {
     EXPECT_EQ(1, process_request_ct_);
@@ -243,7 +243,7 @@ class IncompleteResourceHandlerOld : public CefResourceHandler {
       EXPECT_EQ(0, read_response_ct_);
     }
 
-    destroy_callback_.Run();
+    std::move(destroy_callback_).Run();
   }
 
   bool ProcessRequest(CefRefPtr<CefRequest> request,
@@ -298,7 +298,7 @@ class IncompleteResourceHandlerOld : public CefResourceHandler {
  private:
   const TestMode test_mode_;
   const std::string mime_type_;
-  const base::Closure destroy_callback_;
+  base::OnceClosure destroy_callback_;
 
   int process_request_ct_ = 0;
   int get_response_headers_ct_ = 0;
@@ -320,10 +320,10 @@ class IncompleteResourceHandler : public CefResourceHandler {
 
   IncompleteResourceHandler(TestMode test_mode,
                             const std::string& mime_type,
-                            const base::Closure& destroy_callback)
+                            base::OnceClosure destroy_callback)
       : test_mode_(test_mode),
         mime_type_(mime_type),
-        destroy_callback_(destroy_callback) {}
+        destroy_callback_(std::move(destroy_callback)) {}
 
   ~IncompleteResourceHandler() override {
     EXPECT_EQ(1, open_ct_);
@@ -338,7 +338,7 @@ class IncompleteResourceHandler : public CefResourceHandler {
       EXPECT_EQ(0, read_ct_);
     }
 
-    destroy_callback_.Run();
+    std::move(destroy_callback_).Run();
   }
 
   bool Open(CefRefPtr<CefRequest> request,
@@ -410,7 +410,7 @@ class IncompleteResourceHandler : public CefResourceHandler {
  private:
   const TestMode test_mode_;
   const std::string mime_type_;
-  const base::Closure destroy_callback_;
+  base::OnceClosure destroy_callback_;
 
   int open_ct_ = 0;
   int get_response_headers_ct_ = 0;
@@ -612,7 +612,7 @@ class BasicResponseTest : public TestHandler {
       CefRefPtr<CefBrowser> browser,
       CefRefPtr<CefFrame> frame,
       CefRefPtr<CefRequest> request,
-      CefRefPtr<CefRequestCallback> callback) override {
+      CefRefPtr<CefCallback> callback) override {
     EXPECT_IO_THREAD();
     if (IsChromeRuntimeEnabled() && request->GetResourceType() == RT_FAVICON) {
       // Ignore favicon requests.
@@ -987,7 +987,8 @@ class BasicResponseTest : public TestHandler {
 
     if (!SignalCompletionWhenAllBrowsersClose()) {
       // Complete asynchronously so the call stack has a chance to unwind.
-      CefPostTask(TID_UI, base::Bind(&BasicResponseTest::TestComplete, this));
+      CefPostTask(TID_UI,
+                  base::BindOnce(&BasicResponseTest::TestComplete, this));
     }
   }
 
@@ -1039,9 +1040,9 @@ class BasicResponseTest : public TestHandler {
     return "<html><body>Redirect</body></html>";
   }
 
-  base::Closure GetResourceDestroyCallback() {
+  base::OnceClosure GetResourceDestroyCallback() {
     resource_handler_created_ct_++;
-    return base::Bind(&BasicResponseTest::MaybeDestroyTest, this, true);
+    return base::BindOnce(&BasicResponseTest::MaybeDestroyTest, this, true);
   }
 
   bool GetCallbackResourceHandlerMode(CallbackResourceHandler::Mode& mode) {
@@ -1322,14 +1323,14 @@ class BasicResponseTest : public TestHandler {
     EXPECT_TRUE(IsIncomplete());
     SetSignalCompletionWhenAllBrowsersClose(false);
     CefPostDelayedTask(
-        TID_UI, base::Bind(&TestHandler::CloseBrowser, GetBrowser(), false),
+        TID_UI, base::BindOnce(&TestHandler::CloseBrowser, GetBrowser(), false),
         100);
   }
 
   void MaybeDestroyTest(bool from_handler) {
     if (!CefCurrentlyOn(TID_UI)) {
-      CefPostTask(TID_UI, base::Bind(&BasicResponseTest::MaybeDestroyTest, this,
-                                     from_handler));
+      CefPostTask(TID_UI, base::BindOnce(&BasicResponseTest::MaybeDestroyTest,
+                                         this, from_handler));
       return;
     }
 
@@ -1381,7 +1382,7 @@ class BasicResponseTest : public TestHandler {
   int resource_handler_destroyed_ct_ = 0;
 
   // Used with INCOMPLETE_BEFORE_RESOURCE_LOAD.
-  CefRefPtr<CefRequestCallback> incomplete_callback_;
+  CefRefPtr<CefCallback> incomplete_callback_;
 
   DISALLOW_COPY_AND_ASSIGN(BasicResponseTest);
   IMPLEMENT_REFCOUNTING(BasicResponseTest);
@@ -1565,20 +1566,27 @@ class SubresourceResponseTest : public RoutingTestHandler {
     EXPECT_IO_THREAD();
     EXPECT_EQ(browser_id_, browser->GetIdentifier());
 
-    if (IsMainURL(request->GetURL())) {
+    const std::string& url = request->GetURL();
+    if (IgnoreURL(url))
+      return nullptr;
+
+    const bool is_main_url = IsMainURL(url);
+    const bool is_sub_url = IsSubURL(url);
+
+    if (is_main_url) {
       EXPECT_TRUE(frame->IsMain());
-    } else if (IsSubURL(request->GetURL())) {
+    } else if (is_sub_url) {
       EXPECT_FALSE(frame->IsMain());
       EXPECT_TRUE(subframe_);
     }
 
-    if (IsMainURL(request->GetURL()) || IsSubURL(request->GetURL())) {
+    if (is_main_url || is_sub_url) {
       // Track the frame ID that we'll expect for resource callbacks.
       // Do this here instead of OnBeforeBrowse because OnBeforeBrowse may
       // return -4 (kInvalidFrameId) for the initial navigation.
       if (frame_id_ == 0) {
         if (subframe_) {
-          if (IsSubURL(request->GetURL()))
+          if (is_sub_url)
             frame_id_ = frame->GetIdentifier();
         } else {
           frame_id_ = frame->GetIdentifier();
@@ -1624,10 +1632,14 @@ class SubresourceResponseTest : public RoutingTestHandler {
     EXPECT_IO_THREAD();
     EXPECT_EQ(browser_id_, browser->GetIdentifier());
 
-    if (IsMainURL(request->GetURL())) {
+    const std::string& url = request->GetURL();
+    if (IgnoreURL(url))
+      return nullptr;
+
+    if (IsMainURL(url)) {
       EXPECT_TRUE(frame->IsMain());
       return nullptr;
-    } else if (IsSubURL(request->GetURL())) {
+    } else if (IsSubURL(url)) {
       EXPECT_FALSE(frame->IsMain());
       EXPECT_TRUE(subframe_);
       return nullptr;
@@ -1646,7 +1658,7 @@ class SubresourceResponseTest : public RoutingTestHandler {
       CefRefPtr<CefBrowser> browser,
       CefRefPtr<CefFrame> frame,
       CefRefPtr<CefRequest> request,
-      CefRefPtr<CefRequestCallback> callback) override {
+      CefRefPtr<CefCallback> callback) override {
     EXPECT_IO_THREAD();
 
     if (IsChromeRuntimeEnabled() && request->GetResourceType() == RT_FAVICON) {
@@ -2097,7 +2109,7 @@ class SubresourceResponseTest : public RoutingTestHandler {
     if (!SignalCompletionWhenAllBrowsersClose()) {
       // Complete asynchronously so the call stack has a chance to unwind.
       CefPostTask(TID_UI,
-                  base::Bind(&SubresourceResponseTest::TestComplete, this));
+                  base::BindOnce(&SubresourceResponseTest::TestComplete, this));
     }
   }
 
@@ -2207,9 +2219,10 @@ class SubresourceResponseTest : public RoutingTestHandler {
     return "<html><body>Redirect</body></html>";
   }
 
-  base::Closure GetResourceDestroyCallback() {
+  base::OnceClosure GetResourceDestroyCallback() {
     resource_handler_created_ct_++;
-    return base::Bind(&SubresourceResponseTest::MaybeDestroyTest, this, true);
+    return base::BindOnce(&SubresourceResponseTest::MaybeDestroyTest, this,
+                          true);
   }
 
   bool GetCallbackResourceHandlerMode(CallbackResourceHandler::Mode& mode) {
@@ -2500,14 +2513,15 @@ class SubresourceResponseTest : public RoutingTestHandler {
     EXPECT_TRUE(IsIncomplete());
     SetSignalCompletionWhenAllBrowsersClose(false);
     CefPostDelayedTask(
-        TID_UI, base::Bind(&TestHandler::CloseBrowser, GetBrowser(), false),
+        TID_UI, base::BindOnce(&TestHandler::CloseBrowser, GetBrowser(), false),
         100);
   }
 
   void MaybeDestroyTest(bool from_handler) {
     if (!CefCurrentlyOn(TID_UI)) {
-      CefPostTask(TID_UI, base::Bind(&SubresourceResponseTest::MaybeDestroyTest,
-                                     this, from_handler));
+      CefPostTask(TID_UI,
+                  base::BindOnce(&SubresourceResponseTest::MaybeDestroyTest,
+                                 this, from_handler));
       return;
     }
 
@@ -2564,7 +2578,7 @@ class SubresourceResponseTest : public RoutingTestHandler {
   int resource_handler_destroyed_ct_ = 0;
 
   // Used with INCOMPLETE_BEFORE_RESOURCE_LOAD.
-  CefRefPtr<CefRequestCallback> incomplete_callback_;
+  CefRefPtr<CefCallback> incomplete_callback_;
 
   DISALLOW_COPY_AND_ASSIGN(SubresourceResponseTest);
   IMPLEMENT_REFCOUNTING(SubresourceResponseTest);
@@ -3026,7 +3040,7 @@ class RedirectResponseTest : public TestHandler {
         CefRefPtr<CefBrowser> browser,
         CefRefPtr<CefFrame> frame,
         CefRefPtr<CefRequest> request,
-        CefRefPtr<CefRequestCallback> callback) override {
+        CefRefPtr<CefCallback> callback) override {
       EXPECT_IO_THREAD();
 
       if (IsChromeRuntimeEnabled() &&
@@ -3173,7 +3187,7 @@ class RedirectResponseTest : public TestHandler {
   const bool via_request_context_handler_;
 
   int browser_id_ = 0;
-  scoped_ptr<ResourceTest> resource_test_;
+  std::unique_ptr<ResourceTest> resource_test_;
   CefRefPtr<ResourceRequestHandler> resource_request_handler_;
 
   IMPLEMENT_REFCOUNTING(RedirectResponseTest);
@@ -3258,7 +3272,7 @@ class BeforeResourceLoadTest : public TestHandler {
       CefRefPtr<CefBrowser> browser,
       CefRefPtr<CefFrame> frame,
       CefRefPtr<CefRequest> request,
-      CefRefPtr<CefRequestCallback> callback) override {
+      CefRefPtr<CefCallback> callback) override {
     EXPECT_IO_THREAD();
 
     if (IsChromeRuntimeEnabled() && request->GetResourceType() == RT_FAVICON) {
@@ -3287,11 +3301,14 @@ class BeforeResourceLoadTest : public TestHandler {
       if (test_mode_ == CANCEL_NAV) {
         // Cancel the request by navigating to a new URL.
         browser->GetMainFrame()->LoadURL(kResourceTestHtml2);
-      } else {
-        // Continue or cancel asynchronously.
+      } else if (test_mode_ == CONTINUE_ASYNC) {
+        // Continue asynchronously.
         CefPostTask(TID_UI,
-                    base::Bind(&CefRequestCallback::Continue, callback.get(),
-                               test_mode_ == CONTINUE_ASYNC));
+                    base::BindOnce(&CefCallback::Continue, callback.get()));
+      } else {
+        // Cancel asynchronously.
+        CefPostTask(TID_UI,
+                    base::BindOnce(&CefCallback::Cancel, callback.get()));
       }
       return RV_CONTINUE_ASYNC;
     }
@@ -3421,8 +3438,8 @@ const char kInputHeader[] = "<html><head></head><body>";
 const char kInputFooter[] = "</body></html>";
 
 // Repeat |content| the minimum number of times necessary to satisfy
-// |desired_min_size|. If |calculated_repeat_ct| is non-NULL it will be set to
-// the number of times that |content| was repeated.
+// |desired_min_size|. If |calculated_repeat_ct| is non-nullptr it will be set
+// to the number of times that |content| was repeated.
 std::string CreateInput(const std::string& content,
                         size_t desired_min_size,
                         size_t* calculated_repeat_ct = nullptr) {
@@ -3855,15 +3872,14 @@ class ResponseFilterTestHandler : public TestHandler {
   void GetOutputContent(CefRefPtr<CefFrame> frame) {
     class StringVisitor : public CefStringVisitor {
      public:
-      typedef base::Callback<void(const std::string& /*received_content*/)>
-          VisitorCallback;
+      using VisitorCallback =
+          base::OnceCallback<void(const std::string& /*received_content*/)>;
 
-      explicit StringVisitor(const VisitorCallback& callback)
-          : callback_(callback) {}
+      explicit StringVisitor(VisitorCallback callback)
+          : callback_(std::move(callback)) {}
 
       void Visit(const CefString& string) override {
-        callback_.Run(string);
-        callback_.Reset();
+        std::move(callback_).Run(string);
       }
 
      private:
@@ -3873,7 +3889,7 @@ class ResponseFilterTestHandler : public TestHandler {
     };
 
     frame->GetSource(new StringVisitor(
-        base::Bind(&ResponseFilterTestHandler::VerifyOutput, this)));
+        base::BindOnce(&ResponseFilterTestHandler::VerifyOutput, this)));
   }
 
   void VerifyOutput(const std::string& received_content) {

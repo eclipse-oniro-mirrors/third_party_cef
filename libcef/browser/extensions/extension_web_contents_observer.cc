@@ -9,12 +9,15 @@
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/common/url_constants.h"
+#include "third_party/blink/public/common/chrome_debug_urls.h"
 
 namespace extensions {
 
 CefExtensionWebContentsObserver::CefExtensionWebContentsObserver(
     content::WebContents* web_contents)
     : ExtensionWebContentsObserver(web_contents),
+      content::WebContentsUserData<CefExtensionWebContentsObserver>(
+          *web_contents),
       script_executor_(new ScriptExecutor(web_contents)) {}
 
 CefExtensionWebContentsObserver::~CefExtensionWebContentsObserver() {}
@@ -45,12 +48,12 @@ void CefExtensionWebContentsObserver::RenderFrameCreated(
   if ((extension->is_extension() || extension->is_platform_app()) &&
       Manifest::IsComponentLocation(extension->location())) {
     policy->GrantRequestOrigin(
-        process_id, url::Origin::Create(GURL(content::kChromeUIResourcesURL)));
+        process_id, url::Origin::Create(GURL(blink::kChromeUIResourcesURL)));
     policy->GrantRequestOrigin(
         process_id, url::Origin::Create(GURL(chrome::kChromeUIThemeURL)));
   }
 }
 
-WEB_CONTENTS_USER_DATA_KEY_IMPL(CefExtensionWebContentsObserver)
+WEB_CONTENTS_USER_DATA_KEY_IMPL(CefExtensionWebContentsObserver);
 
 }  // namespace extensions

@@ -16,7 +16,7 @@ CefBrowserContext* GetBrowserContext(const CefBrowserContext::Getter& getter) {
   CEF_REQUIRE_UIT();
   DCHECK(!getter.is_null());
 
-  // Will return nullptr if the BrowserContext has been destroyed.
+  // Will return nullptr if the BrowserContext has been shut down.
   return getter.Run();
 }
 
@@ -38,7 +38,11 @@ CefRefPtr<CefMediaSource> CefMediaRouteImpl::GetSource() {
 }
 
 CefRefPtr<CefMediaSink> CefMediaRouteImpl::GetSink() {
-  return new CefMediaSinkImpl(route_.media_sink_id(), route_.media_sink_name());
+  return new CefMediaSinkImpl(
+      route_.media_sink_id(), route_.media_sink_name(),
+      route_.media_source().IsDialSource()
+          ? media_router::mojom::MediaRouteProviderId::DIAL
+          : media_router::mojom::MediaRouteProviderId::CAST);
 }
 
 void CefMediaRouteImpl::SendRouteMessage(const void* message,

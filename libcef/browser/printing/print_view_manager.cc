@@ -40,7 +40,7 @@
 #include "printing/metafile_skia.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 
-#if defined(OS_LINUX)
+#if BUILDFLAG(IS_LINUX)
 #include "libcef/browser/printing/print_dialog_linux.h"
 #endif
 
@@ -59,7 +59,7 @@ void FillInDictionaryFromPdfPrintSettings(
     base::DictionaryValue& print_settings) {
   // Fixed settings.
   print_settings.SetIntKey(kSettingPrinterType,
-                           static_cast<int>(PrinterType::kPdf));
+                           static_cast<int>(mojom::PrinterType::kPdf));
   print_settings.SetInteger(kSettingColor,
                             static_cast<int>(mojom::ColorModel::kGray));
   print_settings.SetInteger(kSettingDuplexMode,
@@ -149,7 +149,7 @@ void StopWorker(int document_cookie) {
 // Write the PDF file to disk.
 void SavePdfFile(scoped_refptr<base::RefCountedSharedMemoryMapping> data,
                  const base::FilePath& path,
-                 const CefPrintViewManager::PdfPrintCallback& callback) {
+                 CefPrintViewManager::PdfPrintCallback callback) {
   CEF_REQUIRE_BLOCKING();
   DCHECK_GT(data->size(), 0U);
 
@@ -161,8 +161,8 @@ void SavePdfFile(scoped_refptr<base::RefCountedSharedMemoryMapping> data,
   bool ok = file.IsValid() && metafile.SaveTo(&file);
 
   if (!callback.is_null()) {
-    content::GetUIThreadTaskRunner({})->PostTask(FROM_HERE,
-                                                 base::Bind(callback, ok));
+    content::GetUIThreadTaskRunner({})->PostTask(
+        FROM_HERE, base::BindOnce(std::move(callback), ok));
   }
 }
 
@@ -182,10 +182,23 @@ CefPrintViewManager::~CefPrintViewManager() {
   TerminatePdfPrintJob();
 }
 
+// static
+void CefPrintViewManager::BindPrintManagerHost(
+    mojo::PendingAssociatedReceiver<mojom::PrintManagerHost> receiver,
+    content::RenderFrameHost* rfh) {
+  auto* web_contents = content::WebContents::FromRenderFrameHost(rfh);
+  if (!web_contents)
+    return;
+  auto* print_manager = CefPrintViewManager::FromWebContents(web_contents);
+  if (!print_manager)
+    return;
+  print_manager->BindReceiver(std::move(receiver), rfh);
+}
+
 bool CefPrintViewManager::PrintToPDF(content::RenderFrameHost* rfh,
                                      const base::FilePath& path,
                                      const CefPdfPrintSettings& settings,
-                                     const PdfPrintCallback& callback) {
+                                     PdfPrintCallback callback) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
 
   // Don't start print again while printing is currently in progress.
@@ -193,14 +206,14 @@ bool CefPrintViewManager::PrintToPDF(content::RenderFrameHost* rfh,
     return false;
 
   // Don't print crashed tabs.
-  if (!web_contents() || web_contents()->IsCrashed()) {
+  if (!web_contents() || web_contents()->IsCrashed() || !rfh->IsRenderFrameLive()) {
     return false;
   }
 
   pdf_print_state_.reset(new PdfPrintState);
   pdf_print_state_->printing_rfh_ = rfh;
   pdf_print_state_->output_path_ = path;
-  pdf_print_state_->callback_ = callback;
+  pdf_print_state_->callback_ = std::move(callback);
 
   FillInDictionaryFromPdfPrintSettings(settings, ++next_pdf_request_id_,
                                        pdf_print_state_->settings_);
@@ -218,7 +231,7 @@ bool CefPrintViewManager::PrintToPDF(content::RenderFrameHost* rfh,
 
 void CefPrintViewManager::GetDefaultPrintSettings(
     GetDefaultPrintSettingsCallback callback) {
-#if defined(OS_LINUX)
+#if BUILDFLAG(IS_LINUX)
   // Send notification to the client.
   auto browser = CefBrowserHostBase::GetBrowserForContents(web_contents());
   if (browser) {
@@ -276,15 +289,15 @@ void CefPrintViewManager::MetafileReadyForPrinting(
   }
 
   const base::FilePath output_path = pdf_print_state_->output_path_;
-  const PdfPrintCallback print_callback = pdf_print_state_->callback_;
+  PdfPrintCallback print_callback = std::move(pdf_print_state_->callback_);
 
   // Reset state information.
   pdf_print_state_.reset();
   pdf_print_receiver_.reset();
 
   // Save the PDF file to disk and then execute the callback.
-  CEF_POST_USER_VISIBLE_TASK(
-      base::Bind(&SavePdfFile, shared_buf, output_path, print_callback));
+  CEF_POST_USER_VISIBLE_TASK(base::BindOnce(
+      &SavePdfFile, shared_buf, output_path, std::move(print_callback)));
 }
 
 void CefPrintViewManager::PrintPreviewFailed(int32_t document_cookie,
@@ -312,9 +325,10 @@ void CefPrintViewManager::NavigationStopped() {
   PrintViewManager::NavigationStopped();
 }
 
-void CefPrintViewManager::RenderProcessGone(base::TerminationStatus status) {
+void CefPrintViewManager::PrimaryMainFrameRenderProcessGone(
+    base::TerminationStatus status) {
   TerminatePdfPrintJob();
-  PrintViewManager::RenderProcessGone(status);
+  PrintViewManager::PrimaryMainFrameRenderProcessGone(status);
 }
 
 // static
@@ -350,7 +364,8 @@ void CefPrintViewManager::TerminatePdfPrintJob() {
   if (!pdf_print_state_->callback_.is_null()) {
     // Execute the callback.
     content::GetUIThreadTaskRunner({})->PostTask(
-        FROM_HERE, base::Bind(pdf_print_state_->callback_, false));
+        FROM_HERE,
+        base::BindOnce(std::move(pdf_print_state_->callback_), false));
   }
 
   // Reset state information.

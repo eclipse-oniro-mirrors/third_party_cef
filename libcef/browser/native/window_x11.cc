@@ -9,6 +9,7 @@
 #include "libcef/browser/browser_host_base.h"
 #include "libcef/browser/thread_util.h"
 
+#include "net/base/network_interfaces.h"
 #include "ui/base/x/x11_util.h"
 #include "ui/events/platform/platform_event_source.h"
 #include "ui/events/platform/x11/x11_event_source.h"
@@ -90,10 +91,10 @@ CefWindowX11::CefWindowX11(CefRefPtr<CefBrowserHostBase> browser,
       .depth = depth,
       .wid = xwindow_,
       .parent = parent_xwindow_,
-      .x = bounds.x(),
-      .y = bounds.y(),
-      .width = bounds.width(),
-      .height = bounds.height(),
+      .x = static_cast<int16_t>(bounds.x()),
+      .y = static_cast<int16_t>(bounds.y()),
+      .width = static_cast<uint16_t>(bounds.width()),
+      .height = static_cast<uint16_t>(bounds.height()),
       .c_class = x11::WindowClass::InputOutput,
       .visual = visual,
       .background_pixel = 0,
@@ -391,8 +392,8 @@ void CefWindowX11::ProcessXEvent(const x11::Event& event) {
       if (!focus_pending_) {
         focus_pending_ = true;
         CEF_POST_DELAYED_TASK(CEF_UIT,
-                              base::Bind(&CefWindowX11::ContinueFocus,
-                                         weak_ptr_factory_.GetWeakPtr()),
+                              base::BindOnce(&CefWindowX11::ContinueFocus,
+                                             weak_ptr_factory_.GetWeakPtr()),
                               100);
       }
     } else {

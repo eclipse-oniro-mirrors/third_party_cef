@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=1e4ced3624db151e599c0928a7a87211d5dd8d57$
+// $hash=f86929f0ec5dc6292a33e6f4d05b788e503bdad1$
 //
 
 #ifndef CEF_LIBCEF_DLL_CTOCPP_GET_EXTENSION_RESOURCE_CALLBACK_CTOCPP_H_
@@ -37,8 +37,8 @@ class CefGetExtensionResourceCallbackCToCpp
   virtual ~CefGetExtensionResourceCallbackCToCpp();
 
   // CefGetExtensionResourceCallback methods.
-  void Continue(CefRefPtr<CefStreamReader> stream) OVERRIDE;
-  void Cancel() OVERRIDE;
+  void Continue(CefRefPtr<CefStreamReader> stream) override;
+  void Cancel() override;
 };
 
 #endif  // CEF_LIBCEF_DLL_CTOCPP_GET_EXTENSION_RESOURCE_CALLBACK_CTOCPP_H_

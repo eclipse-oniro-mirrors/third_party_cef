@@ -17,7 +17,7 @@ CefBrowserContext* GetBrowserContext(const CefBrowserContext::Getter& getter) {
   CEF_REQUIRE_UIT();
   DCHECK(!getter.is_null());
 
-  // Will return nullptr if the BrowserContext has been destroyed.
+  // Will return nullptr if the BrowserContext has been shut down.
   return getter.Run();
 }
 
@@ -30,6 +30,9 @@ class CefRegistrationImpl : public CefRegistration,
       : observer_(observer) {
     DCHECK(observer_);
   }
+
+  CefRegistrationImpl(const CefRegistrationImpl&) = delete;
+  CefRegistrationImpl& operator=(const CefRegistrationImpl&) = delete;
 
   ~CefRegistrationImpl() override {
     CEF_REQUIRE_UIT();
@@ -132,7 +135,6 @@ class CefRegistrationImpl : public CefRegistration,
   CefBrowserContext::Getter browser_context_getter_;
 
   IMPLEMENT_REFCOUNTING_DELETE_ON_UIT(CefRegistrationImpl);
-  DISALLOW_COPY_AND_ASSIGN(CefRegistrationImpl);
 };
 
 CefMediaRouterImpl::CefMediaRouterImpl() {
@@ -162,8 +164,8 @@ void CefMediaRouterImpl::Initialize(
 
   if (callback) {
     // Execute client callback asynchronously for consistency.
-    CEF_POST_TASK(CEF_UIT, base::Bind(&CefCompletionCallback::OnComplete,
-                                      callback.get()));
+    CEF_POST_TASK(CEF_UIT, base::BindOnce(&CefCompletionCallback::OnComplete,
+                                          callback.get()));
   }
 }
 

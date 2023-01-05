@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=0884539e94e09316a9e516d93d77743c6287fe9a$
+// $hash=48694fa56762351ccd3369dca9e679efbda61160$
 //
 
 #include "libcef_dll/cpptoc/views/view_cpptoc.h"
@@ -444,6 +444,43 @@ cef_point_t CEF_CALLBACK view_get_position(struct _cef_view_t* self) {
 
   // Execute
   cef_point_t _retval = CefViewCppToC::Get(self)->GetPosition();
+
+  // Return type: simple
+  return _retval;
+}
+
+void CEF_CALLBACK view_set_insets(struct _cef_view_t* self,
+                                  const cef_insets_t* insets) {
+  shutdown_checker::AssertNotShutdown();
+
+  // AUTO-GENERATED CONTENT - DELETE THIS COMMENT BEFORE MODIFYING
+
+  DCHECK(self);
+  if (!self)
+    return;
+  // Verify param: insets; type: simple_byref_const
+  DCHECK(insets);
+  if (!insets)
+    return;
+
+  // Translate param: insets; type: simple_byref_const
+  CefInsets insetsVal = insets ? *insets : CefInsets();
+
+  // Execute
+  CefViewCppToC::Get(self)->SetInsets(insetsVal);
+}
+
+cef_insets_t CEF_CALLBACK view_get_insets(struct _cef_view_t* self) {
+  shutdown_checker::AssertNotShutdown();
+
+  // AUTO-GENERATED CONTENT - DELETE THIS COMMENT BEFORE MODIFYING
+
+  DCHECK(self);
+  if (!self)
+    return CefInsets();
+
+  // Execute
+  cef_insets_t _retval = CefViewCppToC::Get(self)->GetInsets();
 
   // Return type: simple
   return _retval;
@@ -912,6 +949,8 @@ CefViewCppToC::CefViewCppToC() {
   GetStruct()->get_size = view_get_size;
   GetStruct()->set_position = view_set_position;
   GetStruct()->get_position = view_get_position;
+  GetStruct()->set_insets = view_set_insets;
+  GetStruct()->get_insets = view_get_insets;
   GetStruct()->get_preferred_size = view_get_preferred_size;
   GetStruct()->size_to_preferred_size = view_size_to_preferred_size;
   GetStruct()->get_minimum_size = view_get_minimum_size;

@@ -44,7 +44,6 @@ extern const char kEnableSpellingService[];
 extern const char kOverrideSpellCheckLang[];
 extern const char kDisableScrollBounce[];
 extern const char kDisablePdfExtension[];
-extern const char kWidevineCdmPath[];
 extern const char kPluginPolicy[];
 extern const char kPluginPolicy_Allow[];
 extern const char kPluginPolicy_Detect[];
@@ -58,7 +57,7 @@ extern const char kDisableChromeLoginPrompt[];
 extern const char kUserAgentProductAndVersion[];
 extern const char kDisableRequestHandlingForTesting[];
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
 extern const char kFrameworkDirPath[];
 extern const char kMainBundlePath[];
 #endif

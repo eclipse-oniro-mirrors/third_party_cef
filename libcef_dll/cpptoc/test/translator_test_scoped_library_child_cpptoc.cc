@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=cd7a42714195bed68aef8a200c7e1a38681558f2$
+// $hash=c7dafd30c4f75e38e507feabdc40dc234d21a06b$
 //
 
 #include "libcef_dll/cpptoc/test/translator_test_scoped_library_child_cpptoc.h"
@@ -26,7 +26,7 @@ cef_translator_test_scoped_library_child_create(int value, int other_value) {
       CefTranslatorTestScopedLibraryChild::Create(value, other_value);
 
   // Return type: ownptr_same
-  return CefTranslatorTestScopedLibraryChildCppToC::WrapOwn(OWN_PASS(_retval));
+  return CefTranslatorTestScopedLibraryChildCppToC::WrapOwn(std::move(_retval));
 }
 
 namespace {
@@ -122,11 +122,8 @@ CefCppToCScoped<CefTranslatorTestScopedLibraryChildCppToC,
     UnwrapDerivedOwn(CefWrapperType type,
                      cef_translator_test_scoped_library_child_t* s) {
   if (type == WT_TRANSLATOR_TEST_SCOPED_LIBRARY_CHILD_CHILD) {
-    return OWN_RETURN_AS(
-        CefTranslatorTestScopedLibraryChildChildCppToC::UnwrapOwn(
-            reinterpret_cast<cef_translator_test_scoped_library_child_child_t*>(
-                s)),
-        CefTranslatorTestScopedLibraryChild);
+    return CefTranslatorTestScopedLibraryChildChildCppToC::UnwrapOwn(
+        reinterpret_cast<cef_translator_test_scoped_library_child_child_t*>(s));
   }
   NOTREACHED() << "Unexpected class type: " << type;
   return CefOwnPtr<CefTranslatorTestScopedLibraryChild>();

@@ -12,7 +12,9 @@
 #include "libcef/browser/views/view_util.h"
 #include "libcef/browser/views/window_view.h"
 
+#include "base/i18n/rtl.h"
 #include "ui/base/test/ui_controls.h"
+#include "ui/compositor/compositor.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/views/controls/button/menu_button.h"
 #include "ui/views/controls/menu/menu_runner.h"
@@ -21,13 +23,26 @@
 #include "ui/aura/test/ui_controls_factory_aura.h"
 #include "ui/aura/window.h"
 #include "ui/base/test/ui_controls_aura.h"
-#if defined(OS_LINUX) && defined(USE_X11)
-#include "ui/views/test/ui_controls_factory_desktop_aurax11.h"
+#if defined(USE_OZONE)
+#include "ui/ozone/public/ozone_ui_controls_test_helper.h"
+#include "ui/views/test/ui_controls_factory_desktop_aura_ozone.h"
 #endif
+#endif  // defined(USE_AURA)
+
+#if BUILDFLAG(IS_WIN)
+#include "ui/display/win/screen_win.h"
 #endif
 
-#if defined(OS_WIN)
-#include "ui/display/win/screen_win.h"
+#if defined(USE_AURA) && defined(USE_OZONE)
+// Stub implementation for function called from
+// $root_gen_dir/ui/ozone/test_constructor_list.cc to avoid
+// //ui/ozone/platform/wayland:ui_test_support dependencies.
+namespace ui {
+OzoneUIControlsTestHelper* CreateOzoneUIControlsTestHelperWayland() {
+  NOTREACHED();
+  return nullptr;
+}
+}  // namespace ui
 #endif
 
 namespace {
@@ -39,14 +54,14 @@ void InitializeUITesting() {
     ui_controls::EnableUIControls();
 
 #if defined(USE_AURA)
-#if defined(OS_LINUX) && defined(USE_X11)
-    ui_controls::InstallUIControlsAura(
-        views::test::CreateUIControlsDesktopAura());
-#else
+#if BUILDFLAG(IS_WIN)
     ui_controls::InstallUIControlsAura(
         aura::test::CreateUIControlsAura(nullptr));
+#elif defined(USE_OZONE)
+    ui_controls::InstallUIControlsAura(
+        views::test::CreateUIControlsDesktopAuraOzone());
 #endif
-#endif
+#endif  // defined(USE_AURA)
 
     initialized = true;
   }
@@ -67,6 +82,10 @@ class CefUnhandledKeyEventHandler : public ui::EventHandler {
     DCHECK(window_);
     window_->AddPostTargetHandler(this);
   }
+
+  CefUnhandledKeyEventHandler(const CefUnhandledKeyEventHandler&) = delete;
+  CefUnhandledKeyEventHandler& operator=(const CefUnhandledKeyEventHandler&) =
+      delete;
 
   ~CefUnhandledKeyEventHandler() override {
     window_->RemovePostTargetHandler(this);
@@ -97,8 +116,6 @@ class CefUnhandledKeyEventHandler : public ui::EventHandler {
 
   // |window_| is the event target that is associated with this class.
   aura::Window* window_;
-
-  DISALLOW_COPY_AND_ASSIGN(CefUnhandledKeyEventHandler);
 };
 
 #endif  // defined(USE_AURA)
@@ -277,6 +294,15 @@ CefRefPtr<CefImage> CefWindowImpl::GetWindowAppIcon() {
   return nullptr;
 }
 
+CefRefPtr<CefOverlayController> CefWindowImpl::AddOverlayView(
+    CefRefPtr<CefView> view,
+    cef_docking_mode_t docking_mode) {
+  CEF_REQUIRE_VALID_RETURN(nullptr);
+  if (root_view())
+    return root_view()->AddOverlayView(view, docking_mode);
+  return nullptr;
+}
+
 void CefWindowImpl::GetDebugInfo(base::DictionaryValue* info,
                                  bool include_children) {
   ParentClass::GetDebugInfo(info, include_children);
@@ -434,11 +460,11 @@ void CefWindowImpl::ShowMenu(views::MenuButton* menu_button,
   // We'll send the MenuClosed notification manually for better accuracy.
   menu_model_->set_auto_notify_menu_closed(false);
 
-  menu_runner_.reset(
-      new views::MenuRunner(menu_model_impl->model(),
-                            menu_button ? views::MenuRunner::HAS_MNEMONICS
-                                        : views::MenuRunner::CONTEXT_MENU,
-                            base::Bind(&CefWindowImpl::MenuClosed, this)));
+  menu_runner_.reset(new views::MenuRunner(
+      menu_model_impl->model(),
+      menu_button ? views::MenuRunner::HAS_MNEMONICS
+                  : views::MenuRunner::CONTEXT_MENU,
+      base::BindRepeating(&CefWindowImpl::MenuClosed, this)));
 
   menu_runner_->RunMenuAt(
       widget_, menu_button ? menu_button->button_controller() : nullptr,
@@ -526,7 +552,7 @@ void CefWindowImpl::SendMouseMove(int screen_x, int screen_y) {
   InitializeUITesting();
 
   gfx::Point point(screen_x, screen_y);
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   // Windows expects pixel coordinates.
   point = display::win::ScreenWin::DIPToScreenPoint(point);
 #endif

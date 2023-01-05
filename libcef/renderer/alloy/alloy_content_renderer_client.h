@@ -16,9 +16,10 @@
 #include "libcef/renderer/browser_impl.h"
 
 #include "base/compiler_specific.h"
-#include "base/single_thread_task_runner.h"
 #include "base/task/current_thread.h"
+#include "base/task/single_thread_task_runner.h"
 #include "chrome/common/plugin.mojom.h"
+#include "chrome/renderer/media/chrome_key_systems_provider.h"
 #include "content/public/renderer/content_renderer_client.h"
 #include "content/public/renderer/render_thread.h"
 #include "mojo/public/cpp/bindings/generic_pending_receiver.h"
@@ -29,7 +30,6 @@ class CefExtensionsRendererClient;
 class Dispatcher;
 class DispatcherDelegate;
 class ExtensionsClient;
-class ExtensionsGuestViewContainerDispatcher;
 class ExtensionsRendererClient;
 class ResourceRequestPolicy;
 }  // namespace extensions
@@ -42,8 +42,8 @@ namespace web_cache {
 class WebCacheImpl;
 }
 
-class CefBrowserManager;
-class CefRenderThreadObserver;
+class AlloyRenderThreadObserver;
+class CefRenderManager;
 class ChromePDFPrintClient;
 class SpellCheck;
 
@@ -53,6 +53,11 @@ class AlloyContentRendererClient
       public base::CurrentThread::DestructionObserver {
  public:
   AlloyContentRendererClient();
+
+  AlloyContentRendererClient(const AlloyContentRendererClient&) = delete;
+  AlloyContentRendererClient& operator=(const AlloyContentRendererClient&) =
+      delete;
+
   ~AlloyContentRendererClient() override;
 
   // Returns the singleton AlloyContentRendererClient instance.
@@ -79,7 +84,7 @@ class AlloyContentRendererClient
   void ExposeInterfacesToBrowser(mojo::BinderMap* binders) override;
   void RenderThreadConnected() override;
   void RenderFrameCreated(content::RenderFrame* render_frame) override;
-  void RenderViewCreated(content::RenderView* render_view) override;
+  void WebViewCreated(blink::WebView* web_view) override;
   bool IsPluginHandledExternally(content::RenderFrame* render_frame,
                                  const blink::WebElement& plugin_element,
                                  const GURL& original_url,
@@ -99,6 +104,7 @@ class AlloyContentRendererClient
   void AddSupportedKeySystems(
       std::vector<std::unique_ptr<::media::KeySystemProperties>>* key_systems)
       override;
+  bool IsKeySystemsUpdateNeeded() override;
   void RunScriptsAtDocumentStart(content::RenderFrame* render_frame) override;
   void RunScriptsAtDocumentEnd(content::RenderFrame* render_frame) override;
   void RunScriptsAtDocumentIdle(content::RenderFrame* render_frame) override;
@@ -117,7 +123,7 @@ class AlloyContentRendererClient
 
  private:
   void OnBrowserCreated(content::RenderView* render_view,
-                        base::Optional<bool> is_windowless);
+                        absl::optional<bool> is_windowless);
 
   // Perform cleanup work for single-process mode.
   void RunSingleProcessCleanupOnUIThread();
@@ -126,10 +132,10 @@ class AlloyContentRendererClient
   // which the RendererMain function was entered.
   base::TimeTicks main_entry_time_;
 
-  std::unique_ptr<CefBrowserManager> browser_manager_;
+  std::unique_ptr<CefRenderManager> render_manager_;
 
   scoped_refptr<base::SingleThreadTaskRunner> render_task_runner_;
-  std::unique_ptr<CefRenderThreadObserver> observer_;
+  std::unique_ptr<AlloyRenderThreadObserver> observer_;
   std::unique_ptr<web_cache::WebCacheImpl> web_cache_impl_;
   std::unique_ptr<SpellCheck> spellcheck_;
   std::unique_ptr<visitedlink::VisitedLinkReader> visited_link_slave_;
@@ -140,12 +146,14 @@ class AlloyContentRendererClient
   std::unique_ptr<extensions::CefExtensionsRendererClient>
       extensions_renderer_client_;
 
+  // Used to refresh the list of supported key systems after Widevine is
+  // installed as a component update.
+  ChromeKeySystemsProvider key_systems_provider_;
+
   // Used in single-process mode to test when cleanup is complete.
   // Access must be protected by |single_process_cleanup_lock_|.
   bool single_process_cleanup_complete_ = false;
   base::Lock single_process_cleanup_lock_;
-
-  DISALLOW_COPY_AND_ASSIGN(AlloyContentRendererClient);
 };
 
 #endif  // CEF_LIBCEF_RENDERER_ALLOY_ALLOY_CONTENT_RENDERER_CLIENT_H_

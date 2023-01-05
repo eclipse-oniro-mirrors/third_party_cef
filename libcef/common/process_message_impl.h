@@ -7,20 +7,34 @@
 #pragma once
 
 #include "include/cef_process_message.h"
-#include "libcef/common/value_base.h"
 
-struct Cef_Request_Params;
+namespace base {
+class ListValue;
+}
 
-// CefProcessMessage implementation
-class CefProcessMessageImpl
-    : public CefValueBase<CefProcessMessage, Cef_Request_Params> {
+// CefProcessMessage implementation.
+class CefProcessMessageImpl : public CefProcessMessage {
  public:
-  CefProcessMessageImpl(Cef_Request_Params* value,
-                        bool will_delete,
+  // Constructor for referencing existing |arguments|.
+  CefProcessMessageImpl(const CefString& name,
+                        CefRefPtr<CefListValue> arguments);
+
+  // Constructor for creating a new CefListValue that takes ownership of
+  // |arguments|.
+  CefProcessMessageImpl(const CefString& name,
+                        base::ListValue arguments,
                         bool read_only);
 
-  // Copies the underlying value to the specified |target| structure.
-  bool CopyTo(Cef_Request_Params& target);
+  CefProcessMessageImpl(const CefProcessMessageImpl&) = delete;
+  CefProcessMessageImpl& operator=(const CefProcessMessageImpl&) = delete;
+
+  ~CefProcessMessageImpl() override;
+
+  // Transfer ownership of the underlying argument list to the caller, or create
+  // a copy if the argument list is already owned by something else.
+  // TODO: Pass by reference instead of ownership if/when Mojo adds support
+  // for that.
+  base::ListValue TakeArgumentList() WARN_UNUSED_RESULT;
 
   // CefProcessMessage methods.
   bool IsValid() override;
@@ -29,7 +43,11 @@ class CefProcessMessageImpl
   CefString GetName() override;
   CefRefPtr<CefListValue> GetArgumentList() override;
 
-  DISALLOW_COPY_AND_ASSIGN(CefProcessMessageImpl);
+ private:
+  const CefString name_;
+  CefRefPtr<CefListValue> arguments_;
+
+  IMPLEMENT_REFCOUNTING(CefProcessMessageImpl);
 };
 
 #endif  // CEF_LIBCEF_COMMON_PROCESS_MESSAGE_IMPL_H_

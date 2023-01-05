@@ -1,4 +1,4 @@
-// Copyright (c) 2021 The Chromium Embedded Framework Authors. All rights
+// Copyright (c) 2022 The Chromium Embedded Framework Authors. All rights
 // reserved. Use of this source code is governed by a BSD-style license that
 // can be found in the LICENSE file.
 //
@@ -9,7 +9,7 @@
 // implementations. See the translator.README.txt file in the tools directory
 // for more information.
 //
-// $hash=7d80a2edec79db9cb7be6bc23a1103a9f55c66c1$
+// $hash=e4497fd62570371469c3b8d242005add2099e463$
 //
 
 #include "libcef_dll/ctocpp/browser_ctocpp.h"
@@ -20,6 +20,22 @@
 #include "libcef_dll/transfer_util.h"
 
 // VIRTUAL METHODS - Body may be edited by hand.
+
+NO_SANITIZE("cfi-icall") bool CefBrowserCToCpp::IsValid() {
+  shutdown_checker::AssertNotShutdown();
+
+  cef_browser_t* _struct = GetStruct();
+  if (CEF_MEMBER_MISSING(_struct, is_valid))
+    return false;
+
+  // AUTO-GENERATED CONTENT - DELETE THIS COMMENT BEFORE MODIFYING
+
+  // Execute
+  int _retval = _struct->is_valid(_struct);
+
+  // Return type: bool
+  return _retval ? true : false;
+}
 
 NO_SANITIZE("cfi-icall") CefRefPtr<CefBrowserHost> CefBrowserCToCpp::GetHost() {
   shutdown_checker::AssertNotShutdown();

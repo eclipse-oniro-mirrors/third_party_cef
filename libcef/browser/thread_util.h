@@ -44,8 +44,7 @@
 
 #define CEF_POST_TASK(id, task) base::PostTask(FROM_HERE, {id}, task)
 #define CEF_POST_DELAYED_TASK(id, task, delay_ms) \
-  base::PostDelayedTask(FROM_HERE, {id}, task,    \
-                        base::TimeDelta::FromMilliseconds(delay_ms))
+  base::PostDelayedTask(FROM_HERE, {id}, task, base::Milliseconds(delay_ms))
 
 // Post a blocking task with the specified |priority|. Tasks that have not
 // started executing at shutdown will never run. However, any task that has
@@ -82,16 +81,16 @@
 // Same as IMPLEMENT_REFCOUNTING() but using the specified Destructor.
 #define IMPLEMENT_REFCOUNTING_EX(ClassName, Destructor)              \
  public:                                                             \
-  void AddRef() const OVERRIDE { ref_count_.AddRef(); }              \
-  bool Release() const OVERRIDE {                                    \
+  void AddRef() const override { ref_count_.AddRef(); }              \
+  bool Release() const override {                                    \
     if (ref_count_.Release()) {                                      \
       Destructor::Destruct(this);                                    \
       return true;                                                   \
     }                                                                \
     return false;                                                    \
   }                                                                  \
-  bool HasOneRef() const OVERRIDE { return ref_count_.HasOneRef(); } \
-  bool HasAtLeastOneRef() const OVERRIDE {                           \
+  bool HasOneRef() const override { return ref_count_.HasOneRef(); } \
+  bool HasAtLeastOneRef() const override {                           \
     return ref_count_.HasAtLeastOneRef();                            \
   }                                                                  \
                                                                      \

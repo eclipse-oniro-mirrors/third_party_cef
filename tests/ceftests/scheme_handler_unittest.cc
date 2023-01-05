@@ -5,7 +5,7 @@
 #include <algorithm>
 #include <vector>
 
-#include "include/base/cef_bind.h"
+#include "include/base/cef_callback.h"
 #include "include/cef_callback.h"
 #include "include/cef_origin_whitelist.h"
 #include "include/cef_scheme.h"
@@ -144,7 +144,7 @@ class TestSchemeHandler : public TestHandler {
       CefRefPtr<CefBrowser> browser,
       CefRefPtr<CefFrame> frame,
       CefRefPtr<CefRequest> request,
-      CefRefPtr<CefRequestCallback> callback) override {
+      CefRefPtr<CefCallback> callback) override {
     if (IsChromeRuntimeEnabled() && request->GetResourceType() == RT_FAVICON) {
       // Ignore favicon requests.
       return RV_CANCEL;
@@ -212,9 +212,9 @@ class TestSchemeHandler : public TestHandler {
     else if (IsExitURL(url))
       return;
 
-    // Tests sometimes also fail with ERR_ABORTED.
+    // Tests sometimes also fail with ERR_ABORTED or ERR_UNKNOWN_URL_SCHEME.
     if (!(test_results_->expected_error_code == 0 &&
-          errorCode == ERR_ABORTED)) {
+          (errorCode == ERR_ABORTED || errorCode == ERR_UNKNOWN_URL_SCHEME))) {
       EXPECT_EQ(test_results_->expected_error_code, errorCode)
           << failedUrl.ToString();
     }
@@ -306,9 +306,9 @@ class ClientSchemeHandlerOld : public CefResourceHandler {
     if (handled) {
       if (test_results_->delay > 0) {
         // Continue after the delay.
-        CefPostDelayedTask(TID_IO,
-                           base::Bind(&CefCallback::Continue, callback.get()),
-                           test_results_->delay);
+        CefPostDelayedTask(
+            TID_IO, base::BindOnce(&CefCallback::Continue, callback.get()),
+            test_results_->delay);
       } else {
         // Continue immediately.
         callback->Continue();
@@ -372,8 +372,8 @@ class ClientSchemeHandlerOld : public CefResourceHandler {
         // Continue after a delay.
         CefPostDelayedTask(
             TID_IO,
-            base::Bind(&ClientSchemeHandlerOld::ContinueAfterDelay, this,
-                       callback),
+            base::BindOnce(&ClientSchemeHandlerOld::ContinueAfterDelay, this,
+                           callback),
             test_results_->delay);
         bytes_read = 0;
         return true;
@@ -487,9 +487,10 @@ class ClientSchemeHandler : public CefResourceHandler {
       if (test_results_->delay > 0) {
         // Continue after the delay.
         handle_request = false;
-        CefPostDelayedTask(TID_FILE_USER_BLOCKING,
-                           base::Bind(&CefCallback::Continue, callback.get()),
-                           test_results_->delay);
+        CefPostDelayedTask(
+            TID_FILE_USER_BLOCKING,
+            base::BindOnce(&CefCallback::Continue, callback.get()),
+            test_results_->delay);
       }
       return true;
     } else if (test_results_->response_error_code != ERR_NONE) {
@@ -558,10 +559,11 @@ class ClientSchemeHandler : public CefResourceHandler {
     if (test_results_->delay > 0) {
       if (!has_delayed_) {
         // Continue after a delay.
-        CefPostDelayedTask(TID_FILE_USER_BLOCKING,
-                           base::Bind(&ClientSchemeHandler::ContinueAfterDelay,
-                                      this, data_out, bytes_to_read, callback),
-                           test_results_->delay);
+        CefPostDelayedTask(
+            TID_FILE_USER_BLOCKING,
+            base::BindOnce(&ClientSchemeHandler::ContinueAfterDelay, this,
+                           data_out, bytes_to_read, callback),
+            test_results_->delay);
         bytes_read = 0;
         return true;
       }
@@ -685,11 +687,6 @@ void SetUpXHR(const XHRTestSettings& settings) {
   g_TestResults.sub_html = "SUCCESS";
   g_TestResults.sub_allow_origin = settings.sub_allow_origin;
   g_TestResults.sub_redirect_url = settings.sub_redirect_url;
-
-  if (settings.synchronous) {
-    g_TestResults.console_messages.push_back(
-        "Synchronous XMLHttpRequest on the main thread is deprecated");
-  }
 
   std::string request_url;
   if (!settings.sub_redirect_url.empty())
@@ -1317,8 +1314,8 @@ TEST(SchemeHandlerTest, CustomNonStandardFetchSameOrigin) {
   SetUpFetch(settings);
 
   g_TestResults.console_messages.push_back(
-      "Fetch API cannot load customnonstd:xhr%20value. URL scheme must be "
-      "\"http\" or \"https\" for CORS request.");
+      "Fetch API cannot load customnonstd:xhr%20value. URL scheme "
+      "\"customnonstd\" is not supported.");
 
   CefRefPtr<TestSchemeHandler> handler = new TestSchemeHandler(&g_TestResults);
   handler->ExecuteTest();

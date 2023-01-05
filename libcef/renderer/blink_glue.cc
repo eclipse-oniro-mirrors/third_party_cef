@@ -17,7 +17,6 @@
 
 #include "third_party/blink/renderer/bindings/core/v8/sanitize_script_errors.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_evaluation_result.h"
-#include "third_party/blink/renderer/bindings/core/v8/script_source_code.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/element.h"
@@ -30,12 +29,14 @@
 #include "third_party/blink/renderer/core/frame/settings.h"
 #include "third_party/blink/renderer/core/frame/web_local_frame_impl.h"
 #include "third_party/blink/renderer/core/loader/frame_load_request.h"
+#include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/core/script/classic_script.h"
 #include "third_party/blink/renderer/platform/bindings/script_forbidden_scope.h"
 #include "third_party/blink/renderer/platform/bindings/v8_binding.h"
 #include "third_party/blink/renderer/platform/loader/fetch/resource_response.h"
 #include "third_party/blink/renderer/platform/loader/fetch/script_fetch_options.h"
 #include "third_party/blink/renderer/platform/scheduler/public/frame_scheduler.h"
+#include "third_party/blink/renderer/platform/scheduler/public/page_scheduler.h"
 #include "third_party/blink/renderer/platform/weborigin/scheme_registry.h"
 #undef LOG
 
@@ -87,21 +88,28 @@ void GoForward(blink::WebView* view) {
   }
 }
 
-std::string DumpDocumentText(blink::WebLocalFrame* frame) {
+bool IsInBackForwardCache(blink::WebLocalFrame* frame) {
+  blink::Frame* core_frame = blink::WebFrame::ToCoreFrame(*frame);
+  return blink::To<blink::LocalFrame>(core_frame)
+      ->GetPage()
+      ->GetPageScheduler()
+      ->IsInBackForwardCache();
+}
+
+blink::WebString DumpDocumentText(blink::WebLocalFrame* frame) {
   // We use the document element's text instead of the body text here because
   // not all documents have a body, such as XML documents.
   blink::WebElement document_element = frame->GetDocument().DocumentElement();
   if (document_element.IsNull())
-    return std::string();
+    return blink::WebString();
 
   blink::Element* web_element = document_element.Unwrap<blink::Element>();
-  return blink::WebString(web_element->innerText()).Utf8();
+  return blink::WebString(web_element->innerText());
 }
 
-std::string DumpDocumentMarkup(blink::WebLocalFrame* frame) {
-  const auto& string = blink::CreateMarkup(
+blink::WebString DumpDocumentMarkup(blink::WebLocalFrame* frame) {
+  return blink::CreateMarkup(
       blink::To<blink::WebLocalFrameImpl>(frame)->GetFrame()->GetDocument());
-  return string.Utf8();
 }
 
 cef_dom_node_type_t GetNodeType(const blink::WebNode& node) {
@@ -185,16 +193,12 @@ v8::Local<v8::Value> ExecuteV8ScriptAndReturnValue(
   if (!frame)
     return v8::Local<v8::Value>();
 
-  const blink::ScriptSourceCode ssc = blink::ScriptSourceCode(
-      source, blink::ScriptSourceLocationType::kInternal,
-      nullptr, /* cache_handler */
-      blink::KURL(source_url),
+  auto* script = blink::ClassicScript::Create(
+      source, blink::KURL(source_url), blink::KURL(source_url),
+      blink::ScriptFetchOptions(), blink::ScriptSourceLocationType::kInternal,
+      blink::SanitizeScriptErrors::kDoNotSanitize, /*cache_handler=*/nullptr,
       WTF::TextPosition(WTF::OrdinalNumber::FromOneBasedInt(start_line),
                         WTF::OrdinalNumber::FromZeroBasedInt(0)));
-
-  auto* script = blink::MakeGarbageCollected<blink::ClassicScript>(
-      ssc, ssc.Url(), blink::ScriptFetchOptions(),
-      blink::SanitizeScriptErrors::kDoNotSanitize);
 
   // The Rethrow() message is unused due to kDoNotSanitize but it still needs
   // to be non-nullopt for exceptions to be re-thrown as expected.

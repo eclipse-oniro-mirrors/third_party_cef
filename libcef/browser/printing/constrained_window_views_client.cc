@@ -5,8 +5,8 @@
 #include "libcef/browser/printing/constrained_window_views_client.h"
 
 #include "base/logging.h"
-#include "base/macros.h"
 #include "base/memory/ptr_util.h"
+#include "base/notreached.h"
 #include "chrome/browser/platform_util.h"
 #include "chrome/browser/ui/browser_finder.h"
 #include "components/web_modal/web_contents_modal_dialog_host.h"
@@ -17,6 +17,12 @@ class CefConstrainedWindowViewsClient
     : public constrained_window::ConstrainedWindowViewsClient {
  public:
   CefConstrainedWindowViewsClient() {}
+
+  CefConstrainedWindowViewsClient(const CefConstrainedWindowViewsClient&) =
+      delete;
+  CefConstrainedWindowViewsClient& operator=(
+      const CefConstrainedWindowViewsClient&) = delete;
+
   ~CefConstrainedWindowViewsClient() override {}
 
  private:
@@ -30,8 +36,6 @@ class CefConstrainedWindowViewsClient
     NOTREACHED();
     return gfx::NativeView();
   }
-
-  DISALLOW_COPY_AND_ASSIGN(CefConstrainedWindowViewsClient);
 };
 
 }  // namespace

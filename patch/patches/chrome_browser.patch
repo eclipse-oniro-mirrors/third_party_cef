@@ -1,8 +1,8 @@
 diff --git chrome/browser/BUILD.gn chrome/browser/BUILD.gn
-index 9fedd8330743..c8323ddcbc7f 100644
+index 5d956361e7bae..81e2df3f04e51 100644
 --- chrome/browser/BUILD.gn
 +++ chrome/browser/BUILD.gn
-@@ -13,6 +13,7 @@ import("//build/config/features.gni")
+@@ -12,6 +12,7 @@ import("//build/config/features.gni")
  import("//build/config/linux/gtk/gtk.gni")
  import("//build/config/python.gni")
  import("//build/config/ui.gni")
@@ -10,7 +10,7 @@ index 9fedd8330743..c8323ddcbc7f 100644
  import("//chrome/browser/buildflags.gni")
  import("//chrome/browser/downgrade/buildflags.gni")
  import("//chrome/common/features.gni")
-@@ -1908,6 +1909,7 @@ static_library("browser") {
+@@ -1925,6 +1926,7 @@ static_library("browser") {
      "//build:chromeos_buildflags",
      "//build/config/compiler:compiler_buildflags",
      "//cc",
@@ -18,8 +18,8 @@ index 9fedd8330743..c8323ddcbc7f 100644
      "//chrome:extra_resources",
      "//chrome:resources",
      "//chrome:strings",
-@@ -2456,6 +2458,10 @@ static_library("browser") {
-     ]
+@@ -2562,6 +2564,10 @@ static_library("browser") {
+     deps += [ "//chrome/browser/ui/webui/connectors_internals:mojo_bindings" ]
    }
  
 +  if (enable_cef) {
